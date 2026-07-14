@@ -1,0 +1,29 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { buildDatabaseConfig } from './config/database.config';
+import { ShopsModule } from './modules/shops/shops.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: buildDatabaseConfig,
+    }),
+    // Serve uploaded shop images: <UPLOAD_DIR> is exposed under <UPLOAD_URL_PREFIX>.
+    ServeStaticModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => [
+        {
+          rootPath: config.get<string>('UPLOAD_DIR', './uploads'),
+          serveRoot: config.get<string>('UPLOAD_URL_PREFIX', '/uploads'),
+          serveStaticOptions: { index: false, fallthrough: true },
+        },
+      ],
+    }),
+    ShopsModule,
+  ],
+})
+export class AppModule {}
