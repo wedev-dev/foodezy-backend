@@ -63,10 +63,10 @@ export class RegisterShopDto {
   @MaxLength(13)
   ownerId?: string;
 
-  // 1=ทดลองฟรี, 2=Trial, 3=Pro, 4=Premium. Default 2, matching the old form.
+  // Matches the `packages` table: 1=Trial, 2=Pro, 3=Premium.
   @IsInt()
   @Min(1)
-  packageId: number = 2;
+  packageId: number = 1;
 
   @IsIn(['qr_only', 'staff_only', 'both'])
   orderMode: string = 'qr_only';

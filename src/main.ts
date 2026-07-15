@@ -2,11 +2,18 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
+
+  // Admin auth uses an httpOnly cookie; needed before the guards read it.
+  app.use(cookieParser());
+  // Behind Traefik — required for @Ip() to report the real client address.
+  app.set('trust proxy', 1);
 
   // API routes live under /api; static uploads are served at /uploads (unaffected).
   app.setGlobalPrefix('api');
