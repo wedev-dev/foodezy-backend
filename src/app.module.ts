@@ -4,6 +4,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { buildDatabaseConfig } from './config/database.config';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
+import { AdminDashboardModule } from './modules/admin-dashboard/admin-dashboard.module';
 import { ShopsModule } from './modules/shops/shops.module';
 
 @Module({
@@ -26,6 +27,7 @@ import { ShopsModule } from './modules/shops/shops.module';
     }),
     ShopsModule,
     AdminAuthModule,
+    AdminDashboardModule,
   ],
 })
 export class AppModule {}
