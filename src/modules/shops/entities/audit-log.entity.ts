@@ -28,6 +28,16 @@ export class AuditLog {
   @Column({ name: 'target_id', type: 'int', unsigned: true, nullable: true })
   targetId!: number | null;
 
+  /**
+   * Both value columns carry a CHECK (json_valid(...)) constraint in the schema:
+   * anything written here must be a JSON string or NULL, never plain text.
+   */
+  @Column({ name: 'old_value', type: 'longtext', nullable: true })
+  oldValue!: string | null;
+
+  @Column({ name: 'new_value', type: 'longtext', nullable: true })
+  newValue!: string | null;
+
   @Column({ name: 'ip_address', type: 'varchar', length: 45, nullable: true })
   ipAddress!: string | null;
 
