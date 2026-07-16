@@ -15,8 +15,15 @@ import {
 } from '@nestjs/common';
 import { AdminAuthGuard, RequestWithAdmin } from '../admin-auth/guards/admin-auth.guard';
 import { PermissionGuard, RequirePermission } from '../admin-auth/guards/permission.guard';
-import { AdminShopsService, ActorMeta, PendingShopPage } from './admin-shops.service';
+import {
+  AdminShopsService,
+  ActorMeta,
+  PendingShopPage,
+  ShopDetail,
+  ShopListPage,
+} from './admin-shops.service';
 import { PendingQueryDto } from './dto/pending-query.dto';
+import { ShopListQueryDto } from './dto/shop-list-query.dto';
 import { UpdateShopStatusDto } from './dto/update-shop-status.dto';
 
 @Controller('admin/shops')
@@ -30,6 +37,19 @@ export class AdminShopsController {
     @Query() query: PendingQueryDto,
   ): Promise<{ success: true; data: PendingShopPage }> {
     return { success: true, data: await this.shops.listPending(query.page ?? 1) };
+  }
+
+  @Get()
+  async list(@Query() query: ShopListQueryDto): Promise<{ success: true; data: ShopListPage }> {
+    return { success: true, data: await this.shops.list(query.status, query.search, query.page ?? 1) };
+  }
+
+  // Declared after 'pending' so that literal route isn't captured by :id.
+  @Get(':id')
+  async detail(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<{ success: true; data: ShopDetail }> {
+    return { success: true, data: await this.shops.detail(id) };
   }
 
   @Patch(':id/status')
