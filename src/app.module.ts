@@ -7,6 +7,7 @@ import { AdminAccountModule } from './modules/admin-account/admin-account.module
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { AdminDashboardModule } from './modules/admin-dashboard/admin-dashboard.module';
+import { AdminShopsModule } from './modules/admin-shops/admin-shops.module';
 import { ShopsModule } from './modules/shops/shops.module';
 
 @Module({
@@ -32,6 +33,7 @@ import { ShopsModule } from './modules/shops/shops.module';
     AdminDashboardModule,
     AdminAccountModule,
     AdminAuditModule,
+    AdminShopsModule,
   ],
 })
 export class AppModule {}
