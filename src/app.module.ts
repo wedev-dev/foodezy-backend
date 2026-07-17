@@ -10,6 +10,8 @@ import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { AdminDashboardModule } from './modules/admin-dashboard/admin-dashboard.module';
 import { AdminShopsModule } from './modules/admin-shops/admin-shops.module';
 import { AdminUsersModule } from './modules/admin-users/admin-users.module';
+import { AdminWebhookModule } from './modules/admin-webhook/admin-webhook.module';
+import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { ShopsModule } from './modules/shops/shops.module';
 
 @Module({
@@ -38,6 +40,8 @@ import { ShopsModule } from './modules/shops/shops.module';
     AdminShopsModule,
     AdminAnnouncementsModule,
     AdminUsersModule,
+    AdminWebhookModule,
+    MaintenanceModule,
   ],
 })
 export class AppModule {}
