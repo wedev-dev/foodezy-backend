@@ -4,10 +4,12 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { buildDatabaseConfig } from './config/database.config';
 import { AdminAccountModule } from './modules/admin-account/admin-account.module';
+import { AdminAnnouncementsModule } from './modules/admin-announcements/admin-announcements.module';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { AdminDashboardModule } from './modules/admin-dashboard/admin-dashboard.module';
 import { AdminShopsModule } from './modules/admin-shops/admin-shops.module';
+import { AdminUsersModule } from './modules/admin-users/admin-users.module';
 import { ShopsModule } from './modules/shops/shops.module';
 
 @Module({
@@ -34,6 +36,8 @@ import { ShopsModule } from './modules/shops/shops.module';
     AdminAccountModule,
     AdminAuditModule,
     AdminShopsModule,
+    AdminAnnouncementsModule,
+    AdminUsersModule,
   ],
 })
 export class AppModule {}
