@@ -10,6 +10,7 @@ import {
   Matches,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 
 const trim = ({ value }: { value: unknown }): unknown =>
@@ -56,6 +57,16 @@ export class SaveShopDto {
   @Transform(trim)
   @Matches(/^\d{13}$/, { message: 'เลขบัตรประชาชนต้องเป็นตัวเลข 13 หลัก' })
   ownerIdCard?: string;
+
+  /**
+   * Required when creating; on update an empty value means "leave unchanged",
+   * so the field stays optional here and create() enforces it.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(6, { message: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' })
+  @MaxLength(100)
+  password?: string;
 
   @Transform(toInt)
   @IsInt()

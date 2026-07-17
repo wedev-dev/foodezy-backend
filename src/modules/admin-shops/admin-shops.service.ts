@@ -277,6 +277,12 @@ export class AdminShopsService {
     );
     if (dup.length > 0) throw new ConflictException('อีเมลนี้ถูกใช้งานในระบบแล้ว กรุณาใช้อีเมลอื่น');
 
+    // shops.password is NOT NULL, and the shop-side login reads it, so a shop
+    // created without one could never sign in.
+    if (!dto.password) {
+      throw new BadRequestException('กรุณากำหนดรหัสผ่านสำหรับร้านค้า');
+    }
+
     const frontUrl = this.fileUrl(files.shopFront?.[0]);
     const insideUrl = this.fileUrl(files.shopInside?.[0]);
     const status = this.enforceKybStatus(dto.status, frontUrl, insideUrl);
@@ -285,11 +291,11 @@ export class AdminShopsService {
     return this.dataSource.transaction(async (trx) => {
       const result = await trx.query<{ insertId: number }>(
         `INSERT INTO shops (
-           shop_code, name, owner_name, owner_id_card, phone, email, address, tax_id,
+           shop_code, name, owner_name, owner_id_card, phone, email, password, address, tax_id,
            package_id, status, trial_start_at, trial_end_at, package_start_at, package_end_at,
            shop_front_url, shop_inside_url, shop_type_ids, is_open, created_at,
            order_mode, kitchen_output, printer_ip, billing_type, buffet_price_per_head
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), ?, ?, ?, ?, ?)`,
         [
           'PENDING',
           dto.name,
@@ -297,6 +303,7 @@ export class AdminShopsService {
           dto.ownerIdCard ?? null,
           dto.phone,
           dto.email,
+          this.preparePassword(dto.password),
           dto.address ?? null,
           dto.taxId ?? null,
           dto.packageId,
@@ -378,9 +385,13 @@ export class AdminShopsService {
     const status = this.enforceKybStatus(dto.status, frontUrl, insideUrl);
     const dates = this.rollPackageWindow(Number(current.packageId), dto.packageId, current);
 
+    // Only touch the password column when a new one was actually typed.
+    const passwordSql = dto.password ? 'password = ?,' : '';
+    const passwordParam = dto.password ? [this.preparePassword(dto.password)] : [];
+
     await this.dataSource.query(
       `UPDATE shops SET
-         name = ?, owner_name = ?, owner_id_card = ?, phone = ?, email = ?, address = ?, tax_id = ?,
+         name = ?, owner_name = ?, owner_id_card = ?, phone = ?, email = ?, ${passwordSql} address = ?, tax_id = ?,
          package_id = ?, status = ?,
          trial_start_at = ?, trial_end_at = ?, package_start_at = ?, package_end_at = ?,
          shop_front_url = ?, shop_inside_url = ?, shop_type_ids = ?,
@@ -392,6 +403,7 @@ export class AdminShopsService {
         dto.ownerIdCard ?? null,
         dto.phone,
         dto.email,
+        ...passwordParam,
         dto.address ?? null,
         dto.taxId ?? null,
         dto.packageId,
@@ -412,7 +424,13 @@ export class AdminShopsService {
       ],
     );
 
-    await this.writeLog(actor, 'shop.update_edit', shopId, JSON.stringify({ status, packageId: dto.packageId }));
+    await this.writeLog(
+      actor,
+      'shop.update_edit',
+      shopId,
+      // Never log the password value itself, only that it changed.
+      JSON.stringify({ status, packageId: dto.packageId, passwordChanged: Boolean(dto.password) }),
+    );
   }
 
   /** Dropdown data for the create/edit forms. */
@@ -495,6 +513,15 @@ export class AdminShopsService {
   private mysqlDate(d: Date): string {
     const p = (n: number): string => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+
+  /**
+   * Single place where a shop password is prepared before storage.
+   * Plain text for now, matching the shop-side login and the public
+   * registration flow. To harden: hash here and in both login paths together.
+   */
+  private preparePassword(plain: string): string {
+    return plain;
   }
 
   private buildShopCode(id: number): string {
