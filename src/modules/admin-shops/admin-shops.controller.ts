@@ -2,6 +2,10 @@ import {
   Body,
   Controller,
   Delete,
+  Put,
+  Post,
+  UploadedFiles,
+  UseInterceptors,
   Get,
   Headers,
   HttpCode,
@@ -13,6 +17,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { AdminAuthGuard, RequestWithAdmin } from '../admin-auth/guards/admin-auth.guard';
 import { PermissionGuard, RequirePermission } from '../admin-auth/guards/permission.guard';
 import {
@@ -21,7 +26,9 @@ import {
   PendingShopPage,
   ShopDetail,
   ShopListPage,
+  UploadedImages,
 } from './admin-shops.service';
+import { SaveShopDto } from './dto/save-shop.dto';
 import { PendingQueryDto } from './dto/pending-query.dto';
 import { ShopListQueryDto } from './dto/shop-list-query.dto';
 import { UpdateShopStatusDto } from './dto/update-shop-status.dto';
@@ -37,6 +44,49 @@ export class AdminShopsController {
     @Query() query: PendingQueryDto,
   ): Promise<{ success: true; data: PendingShopPage }> {
     return { success: true, data: await this.shops.listPending(query.page ?? 1) };
+  }
+
+  @Get('meta')
+  async meta(): Promise<{ success: true; data: Awaited<ReturnType<AdminShopsService['formMeta']>> }> {
+    return { success: true, data: await this.shops.formMeta() };
+  }
+
+  @Post()
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'shopFront', maxCount: 1 },
+      { name: 'shopInside', maxCount: 1 },
+    ]),
+  )
+  async create(
+    @Body() dto: SaveShopDto,
+    @UploadedFiles() files: UploadedImages,
+    @Req() req: RequestWithAdmin,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string | undefined,
+  ): Promise<{ success: true; data: { id: number; shopCode: string } }> {
+    const data = await this.shops.create(dto, files ?? {}, this.actor(req, ip, userAgent));
+    return { success: true, data };
+  }
+
+  @Put(':id')
+  @HttpCode(200)
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'shopFront', maxCount: 1 },
+      { name: 'shopInside', maxCount: 1 },
+    ]),
+  )
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SaveShopDto,
+    @UploadedFiles() files: UploadedImages,
+    @Req() req: RequestWithAdmin,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string | undefined,
+  ): Promise<{ success: true }> {
+    await this.shops.update(id, dto, files ?? {}, this.actor(req, ip, userAgent));
+    return { success: true };
   }
 
   @Get()

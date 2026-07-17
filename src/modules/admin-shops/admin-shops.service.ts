@@ -1,7 +1,17 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { unlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import { AuditLog } from '../shops/entities/audit-log.entity';
+import { SaveShopDto } from './dto/save-shop.dto';
 
 export type ShopStatus = 'pending' | 'active' | 'suspended' | 'rejected';
 
@@ -63,6 +73,11 @@ export interface ShopDetail extends ShopListRow {
   daysLeft: number | null;
 }
 
+export interface UploadedImages {
+  shopFront?: Array<{ filename: string }>;
+  shopInside?: Array<{ filename: string }>;
+}
+
 export interface ActorMeta {
   adminId: number;
   ip: string | null;
@@ -78,6 +93,7 @@ export class AdminShopsService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(AuditLog) private readonly auditLogs: Repository<AuditLog>,
+    private readonly config: ConfigService,
   ) {}
 
   async listPending(page = 1): Promise<PendingShopPage> {
@@ -252,6 +268,269 @@ export class AdminShopsService {
       : null;
 
     return { ...shop, stats: { tables, menus, orders }, types: typeNames, activeStart, activeEnd, daysLeft };
+  }
+
+  async create(dto: SaveShopDto, files: UploadedImages, actor: ActorMeta): Promise<{ id: number; shopCode: string }> {
+    const dup = await this.dataSource.query<Array<{ id: number }>>(
+      'SELECT id FROM shops WHERE email = ? AND deleted_at IS NULL LIMIT 1',
+      [dto.email],
+    );
+    if (dup.length > 0) throw new ConflictException('อีเมลนี้ถูกใช้งานในระบบแล้ว กรุณาใช้อีเมลอื่น');
+
+    const frontUrl = this.fileUrl(files.shopFront?.[0]);
+    const insideUrl = this.fileUrl(files.shopInside?.[0]);
+    const status = this.enforceKybStatus(dto.status, frontUrl, insideUrl);
+    const { trialStart, trialEnd, pkgStart, pkgEnd } = this.freshWindow(dto.packageId);
+
+    return this.dataSource.transaction(async (trx) => {
+      const result = await trx.query<{ insertId: number }>(
+        `INSERT INTO shops (
+           shop_code, name, owner_name, owner_id_card, phone, email, address, tax_id,
+           package_id, status, trial_start_at, trial_end_at, package_start_at, package_end_at,
+           shop_front_url, shop_inside_url, shop_type_ids, is_open, created_at,
+           order_mode, kitchen_output, printer_ip, billing_type, buffet_price_per_head
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), ?, ?, ?, ?, ?)`,
+        [
+          'PENDING',
+          dto.name,
+          dto.ownerName,
+          dto.ownerIdCard ?? null,
+          dto.phone,
+          dto.email,
+          dto.address ?? null,
+          dto.taxId ?? null,
+          dto.packageId,
+          status,
+          trialStart,
+          trialEnd,
+          pkgStart,
+          pkgEnd,
+          frontUrl,
+          insideUrl,
+          this.normaliseTypeIds(dto.shopTypeIds),
+          dto.orderMode ?? 'qr_only',
+          dto.kitchenOutput ?? 'screen',
+          dto.printerIp || null,
+          dto.billingType ?? 'per_item',
+          dto.buffetPricePerHead ?? null,
+        ],
+      );
+
+      const id = Number(result.insertId);
+      // Same scheme the public registration already writes, so both sources
+      // produce codes in one format.
+      const shopCode = this.buildShopCode(id);
+      await trx.query('UPDATE shops SET shop_code = ? WHERE id = ?', [shopCode, id]);
+
+      await this.writeLog(actor, 'shop.create_register', id, JSON.stringify({ shopCode, status }));
+      return { id, shopCode };
+    });
+  }
+
+  async update(shopId: number, dto: SaveShopDto, files: UploadedImages, actor: ActorMeta): Promise<void> {
+    const rows = await this.dataSource.query<
+      Array<{
+        packageId: number;
+        trialStartAt: string | null;
+        trialEndAt: string | null;
+        packageStartAt: string | null;
+        packageEndAt: string | null;
+        shopFrontUrl: string | null;
+        shopInsideUrl: string | null;
+      }>
+    >(
+      `SELECT package_id AS packageId, trial_start_at AS trialStartAt, trial_end_at AS trialEndAt,
+              package_start_at AS packageStartAt, package_end_at AS packageEndAt,
+              shop_front_url AS shopFrontUrl, shop_inside_url AS shopInsideUrl
+         FROM shops WHERE id = ? AND deleted_at IS NULL`,
+      [shopId],
+    );
+    const current = rows[0];
+    if (!current) throw new NotFoundException('ไม่พบร้านค้านี้');
+
+    const dupe = await this.dataSource.query<Array<{ id: number }>>(
+      'SELECT id FROM shops WHERE email = ? AND id <> ? AND deleted_at IS NULL LIMIT 1',
+      [dto.email, shopId],
+    );
+    if (dupe.length > 0) throw new ConflictException('อีเมลนี้ถูกใช้งานโดยร้านอื่นแล้ว');
+
+    let frontUrl = current.shopFrontUrl;
+    let insideUrl = current.shopInsideUrl;
+
+    if (dto.deleteFrontFlag === '1') {
+      await this.removeFile(frontUrl);
+      frontUrl = null;
+    }
+    if (dto.deleteInsideFlag === '1') {
+      await this.removeFile(insideUrl);
+      insideUrl = null;
+    }
+    // A newly uploaded file always wins over the delete flag.
+    if (files.shopFront?.[0]) {
+      await this.removeFile(current.shopFrontUrl);
+      frontUrl = this.fileUrl(files.shopFront[0]);
+    }
+    if (files.shopInside?.[0]) {
+      await this.removeFile(current.shopInsideUrl);
+      insideUrl = this.fileUrl(files.shopInside[0]);
+    }
+
+    const status = this.enforceKybStatus(dto.status, frontUrl, insideUrl);
+    const dates = this.rollPackageWindow(Number(current.packageId), dto.packageId, current);
+
+    await this.dataSource.query(
+      `UPDATE shops SET
+         name = ?, owner_name = ?, owner_id_card = ?, phone = ?, email = ?, address = ?, tax_id = ?,
+         package_id = ?, status = ?,
+         trial_start_at = ?, trial_end_at = ?, package_start_at = ?, package_end_at = ?,
+         shop_front_url = ?, shop_inside_url = ?, shop_type_ids = ?,
+         order_mode = ?, kitchen_output = ?, printer_ip = ?, billing_type = ?, buffet_price_per_head = ?
+       WHERE id = ?`,
+      [
+        dto.name,
+        dto.ownerName,
+        dto.ownerIdCard ?? null,
+        dto.phone,
+        dto.email,
+        dto.address ?? null,
+        dto.taxId ?? null,
+        dto.packageId,
+        status,
+        dates.trialStart,
+        dates.trialEnd,
+        dates.pkgStart,
+        dates.pkgEnd,
+        frontUrl,
+        insideUrl,
+        this.normaliseTypeIds(dto.shopTypeIds),
+        dto.orderMode ?? 'qr_only',
+        dto.kitchenOutput ?? 'screen',
+        dto.printerIp || null,
+        dto.billingType ?? 'per_item',
+        dto.buffetPricePerHead ?? null,
+        shopId,
+      ],
+    );
+
+    await this.writeLog(actor, 'shop.update_edit', shopId, JSON.stringify({ status, packageId: dto.packageId }));
+  }
+
+  /** Dropdown data for the create/edit forms. */
+  async formMeta(): Promise<{ packages: Array<{ id: number; name: string }>; types: Array<{ id: number; name: string }> }> {
+    const [packages, types] = await Promise.all([
+      this.dataSource.query<Array<{ id: number; name: string }>>(
+        'SELECT id, name FROM packages ORDER BY id',
+      ),
+      this.dataSource.query<Array<{ id: number; name: string }>>(
+        'SELECT id, name FROM shop_types WHERE is_active = 1 ORDER BY name',
+      ),
+    ]);
+    return { packages, types };
+  }
+
+  /** The KYB rule again: no photos, no live shop — whatever the form asked for. */
+  private enforceKybStatus(wanted: string, front: string | null, inside: string | null): string {
+    return !front || !inside ? 'suspended' : wanted;
+  }
+
+  private freshWindow(packageId: number): {
+    trialStart: string | null;
+    trialEnd: string | null;
+    pkgStart: string | null;
+    pkgEnd: string | null;
+  } {
+    const start = this.mysqlDate(new Date());
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + 30);
+    endDate.setHours(23, 59, 59, 0);
+    const end = this.mysqlDate(endDate);
+
+    return packageId === 1
+      ? { trialStart: start, trialEnd: end, pkgStart: null, pkgEnd: null }
+      : { trialStart: null, trialEnd: null, pkgStart: start, pkgEnd: end };
+  }
+
+  /**
+   * Legacy rule from shop_edit.php: switching package keeps the remaining time
+   * if the current window is still valid, and starts a fresh 30 days if it has
+   * already expired. Staying on the same package never touches the dates.
+   */
+  private rollPackageWindow(
+    oldPkg: number,
+    newPkg: number,
+    cur: {
+      trialStartAt: string | null;
+      trialEndAt: string | null;
+      packageStartAt: string | null;
+      packageEndAt: string | null;
+    },
+  ): { trialStart: string | null; trialEnd: string | null; pkgStart: string | null; pkgEnd: string | null } {
+    let trialStart = cur.trialStartAt;
+    let trialEnd = cur.trialEndAt;
+    let pkgStart = cur.packageStartAt;
+    let pkgEnd = cur.packageEndAt;
+
+    if (newPkg === oldPkg) return { trialStart, trialEnd, pkgStart, pkgEnd };
+
+    const activeEnd = (oldPkg === 1 ? trialEnd : pkgEnd) ?? trialEnd;
+    const expired = !activeEnd || new Date(activeEnd).getTime() < Date.now();
+
+    if (expired) {
+      return this.freshWindow(newPkg);
+    }
+
+    const carryStart = oldPkg === 1 ? trialStart : pkgStart;
+    const carryEnd = oldPkg === 1 ? trialEnd : pkgEnd;
+
+    if (newPkg === 1) {
+      trialStart = carryStart;
+      trialEnd = carryEnd;
+    } else {
+      pkgStart = carryStart;
+      pkgEnd = carryEnd;
+    }
+    return { trialStart, trialEnd, pkgStart, pkgEnd };
+  }
+
+  private mysqlDate(d: Date): string {
+    const p = (n: number): string => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+
+  private buildShopCode(id: number): string {
+    const yy = String(new Date().getFullYear()).slice(-2);
+    return `S${yy}${id.toString(36).toUpperCase().padStart(4, '0')}`;
+  }
+
+  private fileUrl(file: { filename: string } | undefined): string | null {
+    if (!file) return null;
+    const prefix = this.config.get<string>('UPLOAD_URL_PREFIX', '/uploads');
+    return `${prefix}/${file.filename}`;
+  }
+
+  /** Best-effort: a missing file on disk must not fail the save. */
+  private async removeFile(url: string | null): Promise<void> {
+    if (!url) return;
+    const prefix = this.config.get<string>('UPLOAD_URL_PREFIX', '/uploads');
+    if (!url.startsWith(`${prefix}/`)) return;
+    const dir = this.config.get<string>('UPLOAD_DIR', './uploads');
+    try {
+      await unlink(join(dir, url.slice(prefix.length + 1)));
+    } catch (err) {
+      this.logger.warn(`could not delete ${url}: ${String(err)}`);
+    }
+  }
+
+  /** Always store a clean JSON int array, never raw form input. */
+  private normaliseTypeIds(raw: string | undefined): string {
+    if (!raw) return '[]';
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return '[]';
+      return JSON.stringify(parsed.map(Number).filter((n) => Number.isInteger(n) && n > 0));
+    } catch {
+      return '[]';
+    }
   }
 
   private selectSql(): string {
