@@ -279,7 +279,10 @@ export class AdminShopsService {
 
     // shops.password is NOT NULL, and the shop-side login reads it, so a shop
     // created without one could never sign in.
-    if (!dto.password) {
+    // Held in a local const: narrowing on dto.password would not survive into
+    // the transaction callback below.
+    const password = dto.password;
+    if (!password) {
       throw new BadRequestException('กรุณากำหนดรหัสผ่านสำหรับร้านค้า');
     }
 
@@ -303,7 +306,7 @@ export class AdminShopsService {
           dto.ownerIdCard ?? null,
           dto.phone,
           dto.email,
-          this.preparePassword(dto.password),
+          this.preparePassword(password),
           dto.address ?? null,
           dto.taxId ?? null,
           dto.packageId,
