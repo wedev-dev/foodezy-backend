@@ -8,6 +8,12 @@ import { AdminAnnouncementsModule } from './modules/admin-announcements/admin-an
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { AdminBillingModule } from './modules/admin-billing/admin-billing.module';
 import { AdminFinanceModule } from './modules/admin-finance/admin-finance.module';
+import { AdminPackagesModule } from './modules/admin-packages/admin-packages.module';
+import { AdminShopTypesModule } from './modules/admin-shop-types/admin-shop-types.module';
+import { AdminFoodCategoriesModule } from './modules/admin-food-categories/admin-food-categories.module';
+import { AdminCallStaffModule } from './modules/admin-call-staff/admin-call-staff.module';
+import { AdminOptionTemplatesModule } from './modules/admin-option-templates/admin-option-templates.module';
+import { AdminMenuTemplatesModule } from './modules/admin-menu-templates/admin-menu-templates.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { AdminDashboardModule } from './modules/admin-dashboard/admin-dashboard.module';
 import { AdminShopsModule } from './modules/admin-shops/admin-shops.module';
@@ -46,6 +52,14 @@ import { ShopsModule } from './modules/shops/shops.module';
     MaintenanceModule,
     AdminBillingModule,
     AdminFinanceModule,
+    // --- Phase 4A: central library ---
+    AdminPackagesModule,
+    AdminShopTypesModule,
+    AdminFoodCategoriesModule,
+    AdminCallStaffModule,
+    // --- Phase 4B: menu & option templates ---
+    AdminOptionTemplatesModule,
+    AdminMenuTemplatesModule,
   ],
 })
 export class AppModule {}
