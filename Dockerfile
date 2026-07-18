@@ -3,8 +3,9 @@ FROM node:22-slim AS builder
 WORKDIR /app
 
 # ติดตั้ง dependencies ทั้งหมด (รวม devDeps สำหรับ nest build)
+# ใช้ npm install เพราะ repo นี้ไม่มี package-lock.json
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # คอมไพล์ TypeScript -> dist/
 COPY . .
@@ -15,14 +16,13 @@ FROM node:22-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# ติดตั้งเฉพาะ dependencies ที่ใช้ตอนรัน (เล็กลง เร็วขึ้น)
+# ติดตั้งเฉพาะ dependencies ที่ใช้ตอนรัน
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # เอาโค้ดที่คอมไพล์แล้วจาก build stage มา
 COPY --from=builder /app/dist ./dist
 
-# พอร์ตของ backend (ตรงกับ env PORT=3001)
 EXPOSE 3001
 
 CMD ["node", "dist/main.js"]
