@@ -2,7 +2,7 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { compare, hash } from 'bcryptjs';
+import { compare } from 'bcryptjs';
 import { timingSafeEqual } from 'node:crypto';
 
 export type ShopRole = 'owner' | 'staff';
@@ -238,18 +238,23 @@ export class ShopAuthService {
     return a.length === b.length && timingSafeEqual(a, b);
   }
 
+  // NOTE: auto-upgrade to bcrypt is DISABLED during development so that
+  // plain-text passwords set in phpMyAdmin stay plain text. Re-enable by
+  // restoring the body below once the shop system is stable.
   private async upgradePasswordIfNeeded(
-    table: 'shops' | 'shop_staff',
-    id: number,
-    plain: string,
-    stored: string,
+    _table: 'shops' | 'shop_staff',
+    _id: number,
+    _plain: string,
+    _stored: string,
   ): Promise<void> {
-    if (/^\$2[aby]\$/.test(stored)) return; // already hashed
-    try {
-      const newHash = await hash(plain, 10);
-      await this.dataSource.query(`UPDATE ${table} SET password = ? WHERE id = ?`, [newHash, id]);
-    } catch (err) {
-      this.logger.warn(`password upgrade failed for ${table}#${id}: ${String(err)}`);
-    }
+    return;
+    // --- re-enable when ready ---
+    // if (/^\$2[aby]\$/.test(_stored)) return;
+    // try {
+    //   const newHash = await hash(_plain, 10);
+    //   await this.dataSource.query(`UPDATE ${_table} SET password = ? WHERE id = ?`, [newHash, _id]);
+    // } catch (err) {
+    //   this.logger.warn(`password upgrade failed for ${_table}#${_id}: ${String(err)}`);
+    // }
   }
 }
