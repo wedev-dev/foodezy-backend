@@ -4,7 +4,7 @@ import { IsBoolean, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
 
-export class OwnerLoginDto {
+export class LoginDto {
   @Transform(trim)
   @Matches(/^\d{10}$/, { message: 'เบอร์โทรต้องเป็นตัวเลข 10 หลัก' })
   phone!: string;

@@ -23,11 +23,6 @@ export interface ShopIdentity {
   permissions: string[];
 }
 
-export interface LoginMeta {
-  ip: string | null;
-  userAgent: string | null;
-}
-
 export interface LoginResult {
   token: string;
   maxAgeMs: number | null;
@@ -63,87 +58,69 @@ export class ShopAuthService {
     private readonly jwt: JwtService,
   ) {}
 
-  /** Shop owner logs in with phone + password (checked against `shops`). */
-  async loginOwner(phone: string, password: string, remember: boolean): Promise<LoginResult> {
+  /**
+   * Unified login by phone + password — no shop code needed.
+   * Owner phone lives in `shops.phone`; staff phone in `shop_staff.phone`.
+   * Owner is checked first, then staff.
+   */
+  async login(phone: string, password: string, remember: boolean): Promise<LoginResult> {
     const invalid = new UnauthorizedException('เบอร์โทรหรือรหัสผ่านไม่ถูกต้อง');
+    const closed = new UnauthorizedException('ร้านค้านี้ยังไม่เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
 
-    const rows = await this.dataSource.query<ShopRow[]>(
+    // 1) Shop owner (shops.phone)
+    const shopRows = await this.dataSource.query<ShopRow[]>(
       `SELECT id, name, password, status
          FROM shops
         WHERE phone = ? AND deleted_at IS NULL
         LIMIT 1`,
       [phone],
     );
-    const shop = rows[0];
-    if (!shop) throw invalid;
+    const shop = shopRows[0];
+    if (shop) {
+      if (!(await this.verifyPassword(password, shop.password))) throw invalid;
+      if (shop.status !== 'active') throw closed;
+      await this.upgradePasswordIfNeeded('shops', shop.id, password, shop.password);
 
-    const ok = await this.verifyPassword(password, shop.password);
-    if (!ok) throw invalid;
-
-    if (shop.status !== 'active') {
-      throw new UnauthorizedException('ร้านค้านี้ยังไม่เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
+      return this.buildResult({ sub: 0, shopId: shop.id, role: 'owner' }, remember, {
+        shopId: shop.id,
+        shopName: shop.name,
+        role: 'owner',
+        staffId: null,
+        name: shop.name,
+        isSuperadmin: true,
+        permissions: await this.allPermissionSlugs(),
+      });
     }
 
-    // Migrate legacy plain-text passwords to bcrypt on first successful login.
-    await this.upgradePasswordIfNeeded('shops', shop.id, password, shop.password);
-
-    const permissions = await this.allPermissionSlugs();
-    const payload: ShopTokenPayload = { sub: 0, shopId: shop.id, role: 'owner' };
-    return this.buildResult(payload, remember, {
-      shopId: shop.id,
-      shopName: shop.name,
-      role: 'owner',
-      staffId: null,
-      name: shop.name,
-      isSuperadmin: true,
-      permissions,
-    });
-  }
-
-  /** Staff logs in with shop code + username + password (checked against `shop_staff`). */
-  async loginStaff(
-    shopCode: string,
-    username: string,
-    password: string,
-    remember: boolean,
-  ): Promise<LoginResult> {
-    const invalid = new UnauthorizedException('ข้อมูลเข้าสู่ระบบไม่ถูกต้อง');
-
-    const rows = await this.dataSource.query<StaffRow[]>(
+    // 2) Staff (shop_staff.phone)
+    const staffRows = await this.dataSource.query<StaffRow[]>(
       `SELECT st.id, st.shop_id AS shopId, s.name AS shopName, st.name, st.password,
               st.role_id AS roleId, st.is_superadmin AS isSuperadmin, s.status AS shopStatus
          FROM shop_staff st
          JOIN shops s ON s.id = st.shop_id
-        WHERE s.shop_code = ? AND st.username = ? AND s.deleted_at IS NULL
+        WHERE st.phone = ? AND s.deleted_at IS NULL
         LIMIT 1`,
-      [shopCode, username],
+      [phone],
     );
-    const staff = rows[0];
+    const staff = staffRows[0];
     if (!staff) throw invalid;
-
-    const ok = await this.verifyPassword(password, staff.password);
-    if (!ok) throw invalid;
-
+    if (!(await this.verifyPassword(password, staff.password))) throw invalid;
     if (staff.shopStatus !== 'active') {
       throw new UnauthorizedException('ร้านค้านี้ยังไม่เปิดใช้งาน กรุณาติดต่อเจ้าของร้าน');
     }
-
     await this.upgradePasswordIfNeeded('shop_staff', staff.id, password, staff.password);
 
     const isSuperadmin = Number(staff.isSuperadmin) === 1;
-    const permissions = isSuperadmin
-      ? await this.allPermissionSlugs()
-      : await this.rolePermissionSlugs(staff.roleId);
-
-    const payload: ShopTokenPayload = { sub: staff.id, shopId: staff.shopId, role: 'staff' };
-    return this.buildResult(payload, remember, {
+    return this.buildResult({ sub: staff.id, shopId: staff.shopId, role: 'staff' }, remember, {
       shopId: staff.shopId,
       shopName: staff.shopName,
       role: 'staff',
       staffId: staff.id,
       name: staff.name,
       isSuperadmin,
-      permissions,
+      permissions: isSuperadmin
+        ? await this.allPermissionSlugs()
+        : await this.rolePermissionSlugs(staff.roleId),
     });
   }
 
@@ -227,10 +204,7 @@ export class ShopAuthService {
     return rows.map((r) => r.slug);
   }
 
-  /**
-   * Passwords may be bcrypt ($2a/$2b/$2y) or legacy plain text. Support both,
-   * then rewrite plain-text rows to bcrypt on the next successful login.
-   */
+  /** Passwords may be bcrypt ($2a/$2b/$2y) or legacy plain text — support both. */
   private async verifyPassword(input: string, stored: string): Promise<boolean> {
     if (/^\$2[aby]\$/.test(stored)) return compare(input, stored);
     const a = Buffer.from(input, 'utf8');
@@ -238,9 +212,8 @@ export class ShopAuthService {
     return a.length === b.length && timingSafeEqual(a, b);
   }
 
-  // NOTE: auto-upgrade to bcrypt is DISABLED during development so that
-  // plain-text passwords set in phpMyAdmin stay plain text. Re-enable by
-  // restoring the body below once the shop system is stable.
+  // NOTE: auto-upgrade to bcrypt is DISABLED during development so plain-text
+  // passwords set in phpMyAdmin stay plain text. Restore the body to re-enable.
   private async upgradePasswordIfNeeded(
     _table: 'shops' | 'shop_staff',
     _id: number,
@@ -248,13 +221,5 @@ export class ShopAuthService {
     _stored: string,
   ): Promise<void> {
     return;
-    // --- re-enable when ready ---
-    // if (/^\$2[aby]\$/.test(_stored)) return;
-    // try {
-    //   const newHash = await hash(_plain, 10);
-    //   await this.dataSource.query(`UPDATE ${_table} SET password = ? WHERE id = ?`, [newHash, _id]);
-    // } catch (err) {
-    //   this.logger.warn(`password upgrade failed for ${_table}#${_id}: ${String(err)}`);
-    // }
   }
 }
