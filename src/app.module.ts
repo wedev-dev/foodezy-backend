@@ -21,6 +21,8 @@ import { AdminUsersModule } from './modules/admin-users/admin-users.module';
 import { AdminWebhookModule } from './modules/admin-webhook/admin-webhook.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { ShopsModule } from './modules/shops/shops.module';
+import { ShopAuthModule } from './modules/shop-auth/shop-auth.module';
+
 
 @Module({
   imports: [
@@ -41,6 +43,7 @@ import { ShopsModule } from './modules/shops/shops.module';
       ],
     }),
     ShopsModule,
+    ShopAuthModule,
     AdminAuthModule,
     AdminDashboardModule,
     AdminAccountModule,
