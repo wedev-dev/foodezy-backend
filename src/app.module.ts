@@ -7,6 +7,7 @@ import { AdminAccountModule } from './modules/admin-account/admin-account.module
 import { AdminAnnouncementsModule } from './modules/admin-announcements/admin-announcements.module';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { AdminBillingModule } from './modules/admin-billing/admin-billing.module';
+import { AdminFinanceModule } from './modules/admin-finance/admin-finance.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { AdminDashboardModule } from './modules/admin-dashboard/admin-dashboard.module';
 import { AdminShopsModule } from './modules/admin-shops/admin-shops.module';
@@ -44,6 +45,7 @@ import { ShopsModule } from './modules/shops/shops.module';
     AdminWebhookModule,
     MaintenanceModule,
     AdminBillingModule,
+    AdminFinanceModule,
   ],
 })
 export class AppModule {}
