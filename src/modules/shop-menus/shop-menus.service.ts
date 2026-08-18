@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { DataSource } from 'typeorm';
 import { MenuDto } from './dto/menu.dto';
 import { ShopCategoriesService } from './shop-categories.service';
+import { ShopOptionsService } from './shop-options.service';
 
 export interface PickCategory { id: number; name: string }
 export interface PickGroup { id: number; name: string }
@@ -28,6 +29,7 @@ export class ShopMenusService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly config: ConfigService,
     private readonly categories: ShopCategoriesService,
+    private readonly options: ShopOptionsService,
   ) {}
 
   async list(shopId: number): Promise<{ categories: PickCategory[]; optionGroups: PickGroup[]; menus: MenuRow[] }> {
@@ -151,13 +153,26 @@ export class ShopMenusService {
       const catId = await this.categories.resolveFromTemplate(shopId, t.categoryId);
       const sort = await this.nextSort(shopId);
       const cleanImg = t.imageUrl ? t.imageUrl.replace('foodsimg/', '') : null;
-      await this.dataSource.query(
+      const res = await this.dataSource.query(
         `INSERT INTO shop_menus
            (shop_id, template_id, category_id, name, name_en, description, price, image_url,
             is_available, is_recommended, sort_order, menu_pricing_type)
          VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, 0, ?, 'normal')`,
         [shopId, t.id, catId, t.name, t.nameEn, t.description, cleanImg, sort],
       );
+      const menuId = Number((res as { insertId: number }).insertId);
+
+      // ดึง "ออฟชั่นแนะนำ" ที่ admin ผูกไว้กับเมนูต้นแบบ -> สร้างในร้าน (ถ้ายังไม่มี) + ผูกเข้าเมนูอัตโนมัติ
+      const suggested = await this.dataSource.query<Array<{ gid: number }>>(
+        'SELECT global_option_group_id AS gid FROM menu_template_option_groups WHERE menu_template_id = ? ORDER BY sort_order ASC',
+        [t.id],
+      );
+      const groupIds: number[] = [];
+      for (const sg of suggested) {
+        const shopGroupId = await this.options.resolveGlobalGroup(shopId, Number(sg.gid));
+        if (shopGroupId) groupIds.push(shopGroupId);
+      }
+      if (groupIds.length) await this.linkGroups(shopId, menuId, groupIds);
       added += 1;
     }
     return { added };

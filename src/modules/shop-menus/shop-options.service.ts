@@ -98,27 +98,43 @@ export class ShopOptionsService {
     const targets = lib.filter((g) => !g.added && (groupIds === null || groupIds.includes(g.id)));
     let added = 0;
     for (const g of targets) {
-      const gRow = await this.dataSource.query<Array<{ name: string; sel: string; sort: number }>>(
-        'SELECT name, default_selection_type AS sel, sort_order AS sort FROM global_option_groups WHERE id = ? LIMIT 1',
-        [g.id],
-      );
-      if (!gRow[0]) continue;
-      const res = await this.dataSource.query(
-        `INSERT INTO shop_option_groups (shop_id, source_global_group_id, name, selection_type, is_required, sort_order)
-         VALUES (?, ?, ?, ?, 0, ?)`,
-        [shopId, g.id, gRow[0].name, gRow[0].sel, gRow[0].sort],
-      );
-      const newGroupId = Number((res as { insertId: number }).insertId);
-      await this.dataSource.query(
-        `INSERT INTO shop_option_items (shop_option_group_id, name, price_adjustment, sort_order)
-         SELECT ?, name, default_extra_price, sort_order
-           FROM global_option_items WHERE global_option_group_id = ? AND is_active = 1
-          ORDER BY sort_order ASC`,
-        [newGroupId, g.id],
-      );
-      added += 1;
+      const created = await this.cloneOneGlobal(shopId, g.id);
+      if (created) added += 1;
     }
     return { added };
+  }
+
+  // หา/สร้าง shop_option_group จาก global (คืน id) — ใช้ตอน clone เมนูต้นแบบให้ผูกออฟชั่นอัตโนมัติ
+  async resolveGlobalGroup(shopId: number, globalGroupId: number): Promise<number | null> {
+    const existing = await this.dataSource.query<Array<{ id: number }>>(
+      'SELECT id FROM shop_option_groups WHERE shop_id = ? AND source_global_group_id = ? LIMIT 1',
+      [shopId, globalGroupId],
+    );
+    if (existing[0]) return existing[0].id;
+    return this.cloneOneGlobal(shopId, globalGroupId);
+  }
+
+  // clone กลุ่ม global 1 กลุ่ม (+ items) เข้าร้าน is_required=0 — คืน id ใหม่ (null ถ้าไม่พบ global)
+  private async cloneOneGlobal(shopId: number, globalGroupId: number): Promise<number | null> {
+    const gRow = await this.dataSource.query<Array<{ name: string; sel: string; sort: number }>>(
+      'SELECT name, default_selection_type AS sel, sort_order AS sort FROM global_option_groups WHERE id = ? LIMIT 1',
+      [globalGroupId],
+    );
+    if (!gRow[0]) return null;
+    const res = await this.dataSource.query(
+      `INSERT INTO shop_option_groups (shop_id, source_global_group_id, name, selection_type, is_required, sort_order)
+       VALUES (?, ?, ?, ?, 0, ?)`,
+      [shopId, globalGroupId, gRow[0].name, gRow[0].sel, gRow[0].sort],
+    );
+    const newGroupId = Number((res as { insertId: number }).insertId);
+    await this.dataSource.query(
+      `INSERT INTO shop_option_items (shop_option_group_id, name, price_adjustment, sort_order)
+       SELECT ?, name, default_extra_price, sort_order
+         FROM global_option_items WHERE global_option_group_id = ? AND is_active = 1
+        ORDER BY sort_order ASC`,
+      [newGroupId, globalGroupId],
+    );
+    return newGroupId;
   }
 
   private async insertItems(groupId: number, dto: OptionGroupDto): Promise<void> {
