@@ -238,9 +238,10 @@ export class AdminShopsService {
     );
 
     const rows = await this.dataSource.query<ShopDetail[]>(
-      `${this.selectSql()}, s.trial_start_at AS trialStartAt, s.package_start_at AS packageStartAt,
+      `${this.selectSql(`,
+              s.trial_start_at AS trialStartAt, s.package_start_at AS packageStartAt,
               s.order_mode AS orderMode, s.kitchen_output AS kitchenOutput, s.printer_ip AS printerIp,
-              s.billing_type AS billingType, s.buffet_price_per_head AS buffetPricePerHead
+              s.billing_type AS billingType, s.buffet_price_per_head AS buffetPricePerHead`)}
          WHERE s.id = ? AND s.deleted_at IS NULL`,
       [shopId],
     );
@@ -563,7 +564,7 @@ export class AdminShopsService {
     }
   }
 
-  private selectSql(): string {
+  private selectSql(extraCols = ''): string {
     return `SELECT s.id              AS id,
                    s.shop_code       AS shopCode,
                    s.name            AS name,
@@ -581,7 +582,7 @@ export class AdminShopsService {
                    s.trial_end_at    AS trialEndAt,
                    s.package_end_at  AS packageEndAt,
                    s.shop_type_ids   AS shopTypeIds,
-                   p.name            AS packageName
+                   p.name            AS packageName${extraCols}
               FROM shops s
               LEFT JOIN packages p ON s.package_id = p.id`;
   }
