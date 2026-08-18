@@ -129,7 +129,7 @@ export class ShopMenusService {
 
   // ---------- เมนูต้นแบบ (menu_templates) ----------
   async templates(shopId: number): Promise<TemplateRow[]> {
-    return this.dataSource.query<TemplateRow[]>(
+    const rows = await this.dataSource.query<Array<Omit<TemplateRow, 'alreadyAdded'> & { alreadyAdded: number }>>(
       `SELECT t.id, t.name, t.name_en AS nameEn, t.description, t.image_url AS imageUrl,
               t.category_id AS categoryId, g.name AS categoryName,
               EXISTS(SELECT 1 FROM shop_menus m WHERE m.shop_id = ? AND m.template_id = t.id) AS alreadyAdded
@@ -139,6 +139,7 @@ export class ShopMenusService {
         ORDER BY g.sort_order ASC, t.name ASC`,
       [shopId],
     );
+    return rows.map((r) => ({ ...r, alreadyAdded: Number(r.alreadyAdded) === 1 }));
   }
 
   // clone template ที่เลือก (หรือทั้งหมดถ้าไม่ส่ง ids) เข้าตารางร้าน — ข้ามอันที่ดึงแล้ว

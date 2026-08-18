@@ -80,7 +80,7 @@ export class ShopOptionsService {
   }
 
   async library(shopId: number): Promise<LibraryGroup[]> {
-    return this.dataSource.query<LibraryGroup[]>(
+    const rows = await this.dataSource.query<Array<Omit<LibraryGroup, 'added' | 'itemCount'> & { added: number; itemCount: number }>>(
       `SELECT g.id, g.name, g.default_selection_type AS selectionType,
               (SELECT COUNT(*) FROM global_option_items i WHERE i.global_option_group_id = g.id AND i.is_active = 1) AS itemCount,
               EXISTS(SELECT 1 FROM shop_option_groups s WHERE s.shop_id = ? AND s.source_global_group_id = g.id) AS added
@@ -89,6 +89,7 @@ export class ShopOptionsService {
         ORDER BY g.sort_order ASC, g.id ASC`,
       [shopId],
     );
+    return rows.map((r) => ({ ...r, itemCount: Number(r.itemCount), added: Number(r.added) === 1 }));
   }
 
   // clone กลุ่มออฟชั่นจากคลังกลาง (is_required = 0 เสมอ) — ข้ามที่ดึงแล้ว

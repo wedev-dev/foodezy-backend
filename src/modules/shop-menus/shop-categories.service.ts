@@ -29,7 +29,7 @@ export class ShopCategoriesService {
 
   // คลังกลาง (food_categories) + ธงว่าร้านนี้ดึงมาแล้วหรือยัง
   async library(shopId: number): Promise<LibraryCategory[]> {
-    return this.dataSource.query<LibraryCategory[]>(
+    const rows = await this.dataSource.query<Array<Omit<LibraryCategory, 'added'> & { added: number }>>(
       `SELECT g.id, g.name, g.name_en AS nameEn, g.icon,
               EXISTS(SELECT 1 FROM shop_foodcategories s WHERE s.shop_id = ? AND s.template_id = g.id) AS added
          FROM food_categories g
@@ -37,6 +37,7 @@ export class ShopCategoriesService {
         ORDER BY g.sort_order ASC, g.id ASC`,
       [shopId],
     );
+    return rows.map((r) => ({ ...r, added: Number(r.added) === 1 }));
   }
 
   async add(shopId: number, name: string, nameEn: string | null, icon: string | null): Promise<{ id: number }> {
