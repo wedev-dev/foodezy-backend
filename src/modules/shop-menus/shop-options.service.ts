@@ -116,6 +116,13 @@ export class ShopOptionsService {
 
   // clone กลุ่ม global 1 กลุ่ม (+ items) เข้าร้าน is_required=0 — คืน id ใหม่ (null ถ้าไม่พบ global)
   private async cloneOneGlobal(shopId: number, globalGroupId: number): Promise<number | null> {
+    // กันซ้ำ: ถ้าร้านมีกลุ่มนี้ (จาก global เดียวกัน) อยู่แล้ว คืน id เดิม ไม่แทรกใหม่
+    const dup = await this.dataSource.query<Array<{ id: number }>>(
+      'SELECT id FROM shop_option_groups WHERE shop_id = ? AND source_global_group_id = ? LIMIT 1',
+      [shopId, globalGroupId],
+    );
+    if (dup[0]) return dup[0].id;
+
     const gRow = await this.dataSource.query<Array<{ name: string; sel: string; sort: number }>>(
       'SELECT name, default_selection_type AS sel, sort_order AS sort FROM global_option_groups WHERE id = ? LIMIT 1',
       [globalGroupId],
