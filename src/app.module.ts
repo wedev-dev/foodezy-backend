@@ -23,6 +23,7 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { ShopsModule } from './modules/shops/shops.module';
 import { ShopAuthModule } from './modules/shop-auth/shop-auth.module';
 import { ShopSettingsModule } from './modules/shop-settings/shop-settings.module';
+import { ShopMenusModule } from './modules/shop-menus/shop-menus.module';
 
 
 @Module({
@@ -46,6 +47,7 @@ import { ShopSettingsModule } from './modules/shop-settings/shop-settings.module
     ShopsModule,
     ShopAuthModule,
     ShopSettingsModule,
+    ShopMenusModule,
     AdminAuthModule,
     AdminDashboardModule,
     AdminAccountModule,
