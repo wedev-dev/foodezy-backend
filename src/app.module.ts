@@ -24,6 +24,7 @@ import { ShopsModule } from './modules/shops/shops.module';
 import { ShopAuthModule } from './modules/shop-auth/shop-auth.module';
 import { ShopSettingsModule } from './modules/shop-settings/shop-settings.module';
 import { ShopMenusModule } from './modules/shop-menus/shop-menus.module';
+import { ShopTablesModule } from './modules/shop-tables/shop-tables.module';
 
 
 @Module({
@@ -48,6 +49,7 @@ import { ShopMenusModule } from './modules/shop-menus/shop-menus.module';
     ShopAuthModule,
     ShopSettingsModule,
     ShopMenusModule,
+    ShopTablesModule,
     AdminAuthModule,
     AdminDashboardModule,
     AdminAccountModule,
