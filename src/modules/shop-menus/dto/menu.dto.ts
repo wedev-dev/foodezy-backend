@@ -21,6 +21,7 @@ export class MenuDto {
   @IsOptional() @Transform(trim) @Matches(/^\d{1,4}$/) sortOrder?: string;
   @IsOptional() @IsIn(['normal', 'buffet_included', 'buffet_addon']) menuPricingType?: string;
   @IsOptional() @IsIn(['0', '1']) removeImage?: string;
+  @IsOptional() @IsString() optionGroupIds?: string; // JSON array เช่น "[1,2]"
 }
 
 export class ToggleDto {

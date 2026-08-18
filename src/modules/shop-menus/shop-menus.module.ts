@@ -9,6 +9,8 @@ import { ShopMenusController } from './shop-menus.controller';
 import { ShopMenusService } from './shop-menus.service';
 import { ShopCategoriesController } from './shop-categories.controller';
 import { ShopCategoriesService } from './shop-categories.service';
+import { ShopOptionsController } from './shop-options.controller';
+import { ShopOptionsService } from './shop-options.service';
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
@@ -38,7 +40,7 @@ const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/web
       },
     }),
   ],
-  controllers: [ShopMenusController, ShopCategoriesController],
-  providers: [ShopMenusService, ShopCategoriesService],
+  controllers: [ShopMenusController, ShopCategoriesController, ShopOptionsController],
+  providers: [ShopMenusService, ShopCategoriesService, ShopOptionsService],
 })
 export class ShopMenusModule {}

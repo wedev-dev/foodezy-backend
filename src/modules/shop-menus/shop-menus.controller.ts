@@ -6,7 +6,7 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import {
   RequireShopPermission, RequestWithShop, ShopAuthGuard,
 } from '../shop-auth/guards/shop-auth.guard';
-import { MenuRow, PickCategory, ShopMenusService, TemplateRow, UploadedImage } from './shop-menus.service';
+import { MenuRow, PickCategory, PickGroup, ShopMenusService, TemplateRow, UploadedImage } from './shop-menus.service';
 import { MenuDto, ToggleDto } from './dto/menu.dto';
 import { CloneTemplatesDto } from './dto/category.dto';
 
@@ -19,7 +19,7 @@ export class ShopMenusController {
 
   @Get()
   @RequireShopPermission('menu_manage')
-  async list(@Req() req: RequestWithShop): Promise<{ success: true; data: { categories: PickCategory[]; menus: MenuRow[] } }> {
+  async list(@Req() req: RequestWithShop): Promise<{ success: true; data: { categories: PickCategory[]; optionGroups: PickGroup[]; menus: MenuRow[] } }> {
     return { success: true, data: await this.menus.list(req.shop!.shopId) };
   }
 

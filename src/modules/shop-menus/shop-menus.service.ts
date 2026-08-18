@@ -8,10 +8,11 @@ import { MenuDto } from './dto/menu.dto';
 import { ShopCategoriesService } from './shop-categories.service';
 
 export interface PickCategory { id: number; name: string }
+export interface PickGroup { id: number; name: string }
 export interface MenuRow {
   id: number; categoryId: number; categoryName: string; name: string; nameEn: string | null;
   description: string | null; price: number; imageUrl: string | null; isAvailable: boolean;
-  isRecommended: boolean; sortOrder: number; menuPricingType: string;
+  isRecommended: boolean; sortOrder: number; menuPricingType: string; optionGroupIds: number[];
 }
 export interface TemplateRow {
   id: number; name: string; nameEn: string | null; description: string | null;
@@ -29,10 +30,21 @@ export class ShopMenusService {
     private readonly categories: ShopCategoriesService,
   ) {}
 
-  async list(shopId: number): Promise<{ categories: PickCategory[]; menus: MenuRow[] }> {
+  async list(shopId: number): Promise<{ categories: PickCategory[]; optionGroups: PickGroup[]; menus: MenuRow[] }> {
     const categories = await this.dataSource.query<PickCategory[]>(
       `SELECT id, name FROM shop_foodcategories WHERE shop_id = ? AND is_active = 1
         ORDER BY sort_order ASC, name ASC`,
+      [shopId],
+    );
+    const optionGroups = await this.dataSource.query<PickGroup[]>(
+      `SELECT id, name FROM shop_option_groups WHERE shop_id = ? ORDER BY sort_order ASC, id ASC`,
+      [shopId],
+    );
+    const links = await this.dataSource.query<Array<{ menuId: number; groupId: number }>>(
+      `SELECT mog.menu_id AS menuId, mog.shop_option_group_id AS groupId
+         FROM menu_option_groups mog
+         JOIN shop_menus m ON m.id = mog.menu_id
+        WHERE m.shop_id = ?`,
       [shopId],
     );
     const raw = await this.dataSource.query<
@@ -50,8 +62,9 @@ export class ShopMenusService {
     const menus = raw.map((r) => ({
       ...r, price: Number(r.price),
       isAvailable: Number(r.isAvailable) === 1, isRecommended: Number(r.isRecommended) === 1,
+      optionGroupIds: links.filter((l) => l.menuId === r.id).map((l) => l.groupId),
     }));
-    return { categories, menus };
+    return { categories, optionGroups, menus };
   }
 
   async create(shopId: number, dto: MenuDto, files: UploadedImage): Promise<{ id: number }> {
@@ -69,7 +82,9 @@ export class ShopMenusService {
         dto.sortOrder ? Number(dto.sortOrder) : 0, dto.menuPricingType ?? 'normal',
       ],
     );
-    return { id: Number((res as { insertId: number }).insertId) };
+    const id = Number((res as { insertId: number }).insertId);
+    await this.linkGroups(shopId, id, this.parseIds(dto.optionGroupIds));
+    return { id };
   }
 
   async update(shopId: number, id: number, dto: MenuDto, files: UploadedImage): Promise<void> {
@@ -93,6 +108,7 @@ export class ShopMenusService {
         dto.sortOrder ? Number(dto.sortOrder) : 0, dto.menuPricingType ?? 'normal', id, shopId,
       ],
     );
+    await this.linkGroups(shopId, id, this.parseIds(dto.optionGroupIds));
     await this.removeFile(toRemove);
   }
 
@@ -144,6 +160,32 @@ export class ShopMenusService {
       added += 1;
     }
     return { added };
+  }
+
+  private parseIds(raw: string | undefined): number[] {
+    if (!raw) return [];
+    try {
+      const arr = JSON.parse(raw) as unknown;
+      return Array.isArray(arr) ? arr.map(Number).filter((n) => Number.isInteger(n) && n > 0) : [];
+    } catch { return []; }
+  }
+
+  private async linkGroups(shopId: number, menuId: number, groupIds: number[]): Promise<void> {
+    await this.dataSource.query('DELETE FROM menu_option_groups WHERE menu_id = ?', [menuId]);
+    if (!groupIds.length) return;
+    // ผูกเฉพาะกลุ่มที่เป็นของร้านนี้จริง
+    const owned = await this.dataSource.query<Array<{ id: number }>>(
+      `SELECT id FROM shop_option_groups WHERE shop_id = ? AND id IN (${groupIds.map(() => '?').join(',')})`,
+      [shopId, ...groupIds],
+    );
+    let sort = 0;
+    for (const g of owned) {
+      await this.dataSource.query(
+        'INSERT INTO menu_option_groups (menu_id, shop_option_group_id, sort_order) VALUES (?, ?, ?)',
+        [menuId, g.id, sort],
+      );
+      sort += 1;
+    }
   }
 
   private async nextSort(shopId: number): Promise<number> {
