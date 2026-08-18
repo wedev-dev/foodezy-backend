@@ -98,7 +98,7 @@ export class ShopAuthService {
               st.role_id AS roleId, st.is_superadmin AS isSuperadmin, s.status AS shopStatus
          FROM shop_staff st
          JOIN shops s ON s.id = st.shop_id
-        WHERE st.phone = ? AND s.deleted_at IS NULL
+        WHERE st.phone = ? AND s.deleted_at IS NULL AND st.is_active = 1
         LIMIT 1`,
       [phone],
     );
@@ -149,7 +149,7 @@ export class ShopAuthService {
               st.role_id AS roleId, st.is_superadmin AS isSuperadmin, s.status AS shopStatus
          FROM shop_staff st
          JOIN shops s ON s.id = st.shop_id
-        WHERE st.id = ? AND s.deleted_at IS NULL
+        WHERE st.id = ? AND s.deleted_at IS NULL AND st.is_active = 1
         LIMIT 1`,
       [payload.sub],
     );
