@@ -5,12 +5,17 @@ import { unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DataSource } from 'typeorm';
 import { MenuDto } from './dto/menu.dto';
+import { ShopCategoriesService } from './shop-categories.service';
 
-export interface Category { id: number; name: string; nameEn: string | null; icon: string | null }
+export interface PickCategory { id: number; name: string }
 export interface MenuRow {
   id: number; categoryId: number; categoryName: string; name: string; nameEn: string | null;
   description: string | null; price: number; imageUrl: string | null; isAvailable: boolean;
   isRecommended: boolean; sortOrder: number; menuPricingType: string;
+}
+export interface TemplateRow {
+  id: number; name: string; nameEn: string | null; description: string | null;
+  imageUrl: string | null; categoryId: number; categoryName: string; alreadyAdded: boolean;
 }
 export interface UploadedImage { image?: Array<{ filename: string }> }
 
@@ -21,12 +26,14 @@ export class ShopMenusService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly config: ConfigService,
+    private readonly categories: ShopCategoriesService,
   ) {}
 
-  async list(shopId: number): Promise<{ categories: Category[]; menus: MenuRow[] }> {
-    const categories = await this.dataSource.query<Category[]>(
-      `SELECT id, name, name_en AS nameEn, icon
-         FROM food_categories WHERE is_active = 1 ORDER BY sort_order ASC, id ASC`,
+  async list(shopId: number): Promise<{ categories: PickCategory[]; menus: MenuRow[] }> {
+    const categories = await this.dataSource.query<PickCategory[]>(
+      `SELECT id, name FROM shop_foodcategories WHERE shop_id = ? AND is_active = 1
+        ORDER BY sort_order ASC, name ASC`,
+      [shopId],
     );
     const raw = await this.dataSource.query<
       Array<Omit<MenuRow, 'price' | 'isAvailable' | 'isRecommended'> & { price: string; isAvailable: number; isRecommended: number }>
@@ -35,22 +42,20 @@ export class ShopMenusService {
               m.description, m.price, m.image_url AS imageUrl, m.is_available AS isAvailable,
               m.is_recommended AS isRecommended, m.sort_order AS sortOrder, m.menu_pricing_type AS menuPricingType
          FROM shop_menus m
-         JOIN food_categories c ON c.id = m.category_id
+         JOIN shop_foodcategories c ON c.id = m.category_id
         WHERE m.shop_id = ?
         ORDER BY c.sort_order ASC, m.sort_order ASC, m.id ASC`,
       [shopId],
     );
-    const menus: MenuRow[] = raw.map((r) => ({
-      ...r,
-      price: Number(r.price),
-      isAvailable: Number(r.isAvailable) === 1,
-      isRecommended: Number(r.isRecommended) === 1,
+    const menus = raw.map((r) => ({
+      ...r, price: Number(r.price),
+      isAvailable: Number(r.isAvailable) === 1, isRecommended: Number(r.isRecommended) === 1,
     }));
     return { categories, menus };
   }
 
   async create(shopId: number, dto: MenuDto, files: UploadedImage): Promise<{ id: number }> {
-    await this.assertCategory(Number(dto.categoryId));
+    await this.categories.assertOwned(shopId, Number(dto.categoryId));
     const imageUrl = this.fileUrl(files.image?.[0]);
     const res = await this.dataSource.query(
       `INSERT INTO shop_menus
@@ -58,17 +63,10 @@ export class ShopMenusService {
           is_available, is_recommended, sort_order, menu_pricing_type)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        shopId,
-        Number(dto.categoryId),
-        dto.name.trim(),
-        dto.nameEn || null,
-        dto.description || null,
-        dto.price ? Number(dto.price) : 0,
-        imageUrl,
-        dto.isAvailable === '0' ? 0 : 1,
-        dto.isRecommended === '1' ? 1 : 0,
-        dto.sortOrder ? Number(dto.sortOrder) : 0,
-        dto.menuPricingType ?? 'normal',
+        shopId, Number(dto.categoryId), dto.name.trim(), dto.nameEn || null, dto.description || null,
+        dto.price ? Number(dto.price) : 0, imageUrl,
+        dto.isAvailable === '0' ? 0 : 1, dto.isRecommended === '1' ? 1 : 0,
+        dto.sortOrder ? Number(dto.sortOrder) : 0, dto.menuPricingType ?? 'normal',
       ],
     );
     return { id: Number((res as { insertId: number }).insertId) };
@@ -76,8 +74,7 @@ export class ShopMenusService {
 
   async update(shopId: number, id: number, dto: MenuDto, files: UploadedImage): Promise<void> {
     const current = await this.getOwned(shopId, id);
-    await this.assertCategory(Number(dto.categoryId));
-
+    await this.categories.assertOwned(shopId, Number(dto.categoryId));
     const uploaded = this.fileUrl(files.image?.[0]);
     let imageUrl = current.image_url;
     let toRemove: string | null = null;
@@ -90,18 +87,10 @@ export class ShopMenusService {
          is_available = ?, is_recommended = ?, sort_order = ?, menu_pricing_type = ?
        WHERE id = ? AND shop_id = ?`,
       [
-        Number(dto.categoryId),
-        dto.name.trim(),
-        dto.nameEn || null,
-        dto.description || null,
-        dto.price ? Number(dto.price) : 0,
-        imageUrl,
-        dto.isAvailable === '0' ? 0 : 1,
-        dto.isRecommended === '1' ? 1 : 0,
-        dto.sortOrder ? Number(dto.sortOrder) : 0,
-        dto.menuPricingType ?? 'normal',
-        id,
-        shopId,
+        Number(dto.categoryId), dto.name.trim(), dto.nameEn || null, dto.description || null,
+        dto.price ? Number(dto.price) : 0, imageUrl,
+        dto.isAvailable === '0' ? 0 : 1, dto.isRecommended === '1' ? 1 : 0,
+        dto.sortOrder ? Number(dto.sortOrder) : 0, dto.menuPricingType ?? 'normal', id, shopId,
       ],
     );
     await this.removeFile(toRemove);
@@ -109,6 +98,7 @@ export class ShopMenusService {
 
   async remove(shopId: number, id: number): Promise<void> {
     const current = await this.getOwned(shopId, id);
+    await this.dataSource.query('DELETE FROM menu_option_groups WHERE menu_id = ?', [id]);
     await this.dataSource.query('DELETE FROM shop_menus WHERE id = ? AND shop_id = ?', [id, shopId]);
     await this.removeFile(current.image_url);
   }
@@ -121,21 +111,54 @@ export class ShopMenusService {
     );
   }
 
+  // ---------- เมนูต้นแบบ (menu_templates) ----------
+  async templates(shopId: number): Promise<TemplateRow[]> {
+    return this.dataSource.query<TemplateRow[]>(
+      `SELECT t.id, t.name, t.name_en AS nameEn, t.description, t.image_url AS imageUrl,
+              t.category_id AS categoryId, g.name AS categoryName,
+              EXISTS(SELECT 1 FROM shop_menus m WHERE m.shop_id = ? AND m.template_id = t.id) AS alreadyAdded
+         FROM menu_templates t
+         JOIN food_categories g ON g.id = t.category_id
+        WHERE t.is_active = 1
+        ORDER BY g.sort_order ASC, t.name ASC`,
+      [shopId],
+    );
+  }
+
+  // clone template ที่เลือก (หรือทั้งหมดถ้าไม่ส่ง ids) เข้าตารางร้าน — ข้ามอันที่ดึงแล้ว
+  async cloneTemplates(shopId: number, templateIds: number[] | null): Promise<{ added: number }> {
+    const all = await this.templates(shopId);
+    const targets = all.filter((t) => !t.alreadyAdded && (templateIds === null || templateIds.includes(t.id)));
+    let added = 0;
+    for (const t of targets) {
+      const catId = await this.categories.resolveFromTemplate(shopId, t.categoryId);
+      const sort = await this.nextSort(shopId);
+      const cleanImg = t.imageUrl ? t.imageUrl.replace('foodsimg/', '') : null;
+      await this.dataSource.query(
+        `INSERT INTO shop_menus
+           (shop_id, template_id, category_id, name, name_en, description, price, image_url,
+            is_available, is_recommended, sort_order, menu_pricing_type)
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, 0, ?, 'normal')`,
+        [shopId, t.id, catId, t.name, t.nameEn, t.description, cleanImg, sort],
+      );
+      added += 1;
+    }
+    return { added };
+  }
+
+  private async nextSort(shopId: number): Promise<number> {
+    const rows = await this.dataSource.query<Array<{ s: number }>>(
+      'SELECT COALESCE(MAX(sort_order),0) AS s FROM shop_menus WHERE shop_id = ?', [shopId],
+    );
+    return Number(rows[0].s) + 1;
+  }
+
   private async getOwned(shopId: number, id: number): Promise<{ image_url: string | null }> {
     const rows = await this.dataSource.query<Array<{ image_url: string | null }>>(
-      'SELECT image_url FROM shop_menus WHERE id = ? AND shop_id = ? LIMIT 1',
-      [id, shopId],
+      'SELECT image_url FROM shop_menus WHERE id = ? AND shop_id = ? LIMIT 1', [id, shopId],
     );
     if (!rows[0]) throw new NotFoundException('ไม่พบเมนูนี้');
     return rows[0];
-  }
-
-  private async assertCategory(categoryId: number): Promise<void> {
-    const rows = await this.dataSource.query<Array<{ id: number }>>(
-      'SELECT id FROM food_categories WHERE id = ? AND is_active = 1 LIMIT 1',
-      [categoryId],
-    );
-    if (!rows[0]) throw new BadRequestException('หมวดหมู่ไม่ถูกต้อง');
   }
 
   private fileUrl(file: { filename: string } | undefined): string | null {

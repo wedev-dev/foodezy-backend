@@ -7,6 +7,8 @@ import { diskStorage } from 'multer';
 import { ShopAuthModule } from '../shop-auth/shop-auth.module';
 import { ShopMenusController } from './shop-menus.controller';
 import { ShopMenusService } from './shop-menus.service';
+import { ShopCategoriesController } from './shop-categories.controller';
+import { ShopCategoriesService } from './shop-categories.service';
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
@@ -36,7 +38,7 @@ const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/web
       },
     }),
   ],
-  controllers: [ShopMenusController],
-  providers: [ShopMenusService],
+  controllers: [ShopMenusController, ShopCategoriesController],
+  providers: [ShopMenusService, ShopCategoriesService],
 })
 export class ShopMenusModule {}
