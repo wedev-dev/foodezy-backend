@@ -22,7 +22,7 @@ export class ShopTablesService {
     return rows.map((r) => ({ ...r, seats: Number(r.seats), isActive: Number(r.isActive) === 1 }));
   }
 
-  async create(shopId: number, dto: TableDto): Promise<{ id: number }> {
+  async create(shopId: number, dto: TableDto): Promise<{ id: number; tableNumber: string; qrToken: string }> {
     const number = dto.tableNumber?.trim() || (await this.nextNumber(shopId));
     await this.assertUniqueNumber(shopId, number);
     const token = await this.newToken();
@@ -32,7 +32,7 @@ export class ShopTablesService {
        VALUES (?, ?, ?, ?, 1)`,
       [shopId, number, token, seats],
     );
-    return { id: Number((res as { insertId: number }).insertId) };
+    return { id: Number((res as { insertId: number }).insertId), tableNumber: number, qrToken: token };
   }
 
   async update(shopId: number, id: number, dto: TableDto): Promise<void> {

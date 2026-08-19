@@ -20,7 +20,7 @@ export class ShopTablesController {
 
   @Post()
   @RequireShopPermission('table_manage')
-  async create(@Req() req: RequestWithShop, @Body() dto: TableDto): Promise<{ success: true; data: { id: number } }> {
+  async create(@Req() req: RequestWithShop, @Body() dto: TableDto): Promise<{ success: true; data: { id: number; tableNumber: string; qrToken: string } }> {
     return { success: true, data: await this.tables.create(req.shop!.shopId, dto) };
   }
 
