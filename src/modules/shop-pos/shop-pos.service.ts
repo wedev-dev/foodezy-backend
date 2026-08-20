@@ -4,6 +4,8 @@ import { randomBytes } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ItemStatus, OrderStatus } from './dto/update-status.dto';
+import { PaymentMethod } from './dto/pay.dto';
+import { promptpayPayload } from './promptpay.util';
 
 // ---- catalog (เมนูสำหรับหน้าจดออเดอร์) ----
 export interface PosOptionItem {
@@ -83,6 +85,22 @@ export interface TableBill {
   openedAt: string | null;
   total: number;
   orders: OrderDetail[];
+}
+
+export interface Checkout {
+  tableNumber: string;
+  sessionId: number | null;
+  total: number;
+  itemCount: number;
+  promptpayNumber: string | null;
+  promptpayReady: boolean;
+  qrPayload: string | null;
+}
+
+export interface PayResult {
+  billNumber: string;
+  total: number;
+  method: PaymentMethod;
 }
 
 @Injectable()
@@ -468,6 +486,84 @@ export class ShopPosService {
       [sessionId],
     );
     return { closed: true };
+  }
+
+  // ข้อมูลสำหรับหน้าชำระเงิน (ยอดรวม + PromptPay QR payload)
+  async checkout(shopId: number, tableId: number): Promise<Checkout> {
+    const bill = await this.tableBill(shopId, tableId);
+    const shopRow = await this.dataSource.query<Array<{ pp: string | null }>>(
+      `SELECT promptpay_number AS pp FROM shops WHERE id = ? LIMIT 1`,
+      [shopId],
+    );
+    const promptpayNumber = shopRow[0]?.pp ?? null;
+    const itemCount = bill.orders.reduce(
+      (s, o) => s + o.items.reduce((a, i) => a + i.quantity, 0),
+      0,
+    );
+    const promptpayReady = Boolean(promptpayNumber && bill.sessionId && bill.total > 0);
+    const qrPayload = promptpayReady ? promptpayPayload(promptpayNumber as string, bill.total) : null;
+    return {
+      tableNumber: bill.tableNumber,
+      sessionId: bill.sessionId,
+      total: bill.total,
+      itemCount,
+      promptpayNumber,
+      promptpayReady,
+      qrPayload,
+    };
+  }
+
+  // รับชำระเงิน: บันทึกบิล + ปิด session (โต๊ะกลับเป็นว่าง) + ปิดออเดอร์เป็น delivered
+  async pay(shopId: number, tableId: number, method: PaymentMethod): Promise<PayResult> {
+    return this.dataSource.transaction(async (manager): Promise<PayResult> => {
+      const sess = await manager.query<Array<{ id: number }>>(
+        `SELECT id FROM table_sessions
+          WHERE shop_id = ? AND table_id = ? AND status = 'active' AND closed_at IS NULL
+          ORDER BY id DESC LIMIT 1`,
+        [shopId, tableId],
+      );
+      if (!sess[0]) throw new BadRequestException('ไม่มีบิลที่ต้องชำระสำหรับโต๊ะนี้');
+      const sessionId = sess[0].id;
+
+      const totRow = await manager.query<Array<{ total: string }>>(
+        `SELECT COALESCE(SUM(CASE WHEN oi.status <> 'cancelled' THEN oi.subtotal ELSE 0 END), 0) AS total
+           FROM orders o
+           JOIN order_items oi ON oi.order_id = o.id
+          WHERE o.session_id = ? AND o.status <> 'cancelled'`,
+        [sessionId],
+      );
+      const total = Number(totRow[0]?.total ?? 0);
+      if (total <= 0) throw new BadRequestException('ยอดบิลเป็น 0 ไม่สามารถชำระได้');
+
+      const billNumber = await this.nextBillNumber(manager, shopId);
+      await manager.query(
+        `INSERT INTO bills
+           (shop_id, session_id, bill_number, subtotal, discount, service_charge, vat, total,
+            payment_method, payment_status, paid_at)
+         VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, 'paid', NOW())`,
+        [shopId, sessionId, billNumber, total, total, method],
+      );
+      await manager.query(
+        `UPDATE orders SET status = 'delivered'
+          WHERE session_id = ? AND status IN ('pending', 'confirmed', 'cooking', 'ready')`,
+        [sessionId],
+      );
+      await manager.query(
+        `UPDATE table_sessions SET status = 'billed', closed_at = NOW() WHERE id = ?`,
+        [sessionId],
+      );
+      return { billNumber, total, method };
+    });
+  }
+
+  private async nextBillNumber(manager: EntityManager, shopId: number): Promise<string> {
+    const rows = await manager.query<Array<{ mx: number | null }>>(
+      `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(bill_number, '-', -1) AS UNSIGNED)), 0) AS mx
+         FROM bills WHERE shop_id = ?`,
+      [shopId],
+    );
+    const seq = Number(rows[0]?.mx ?? 0) + 1;
+    return `BILL-${String(seq).padStart(4, '0')}`;
   }
 
   private async fetchOrders(

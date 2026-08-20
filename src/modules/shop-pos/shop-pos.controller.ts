@@ -15,7 +15,9 @@ import {
   ShopAuthGuard,
 } from '../shop-auth/guards/shop-auth.guard';
 import {
+  Checkout,
   OrderDetail,
+  PayResult,
   PosCategory,
   PosMenu,
   PosTable,
@@ -24,6 +26,7 @@ import {
 } from './shop-pos.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateItemStatusDto, UpdateOrderStatusDto } from './dto/update-status.dto';
+import { PayDto } from './dto/pay.dto';
 
 @Controller('shop/pos')
 @UseGuards(ShopAuthGuard)
@@ -60,6 +63,25 @@ export class ShopPosController {
     @Param('id', ParseIntPipe) id: number,
   ): Promise<{ success: true; data: { closed: boolean } }> {
     return { success: true, data: await this.pos.closeTable(req.shop!.shopId, id) };
+  }
+
+  @Get('tables/:id/checkout')
+  @RequireShopPermission('pos_access')
+  async checkout(
+    @Req() req: RequestWithShop,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<{ success: true; data: Checkout }> {
+    return { success: true, data: await this.pos.checkout(req.shop!.shopId, id) };
+  }
+
+  @Post('tables/:id/pay')
+  @RequireShopPermission('pos_access')
+  async pay(
+    @Req() req: RequestWithShop,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: PayDto,
+  ): Promise<{ success: true; data: PayResult }> {
+    return { success: true, data: await this.pos.pay(req.shop!.shopId, id, dto.method) };
   }
 
   @Post('orders')
