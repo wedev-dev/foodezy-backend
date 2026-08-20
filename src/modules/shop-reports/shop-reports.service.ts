@@ -81,14 +81,15 @@ export class ShopReportsService {
     );
 
     const topRaw = await this.dataSource.query<Array<{ menuId: number; name: string; qty: string; sales: string }>>(
-      `SELECT oi.menu_id AS menuId, COALESCE(m.name, oi.menu_name) AS name,
+      `SELECT oi.menu_id AS menuId,
+              COALESCE(MAX(m.name), MAX(oi.menu_name)) AS name,
               SUM(oi.quantity) AS qty, SUM(oi.subtotal) AS sales
          FROM order_items oi
          JOIN orders o ON o.id = oi.order_id
          LEFT JOIN shop_menus m ON m.id = oi.menu_id
         WHERE o.shop_id = ? AND o.status <> 'cancelled' AND oi.status <> 'cancelled'
           AND o.created_at >= ? AND o.created_at < ?
-        GROUP BY oi.menu_id, name ORDER BY qty DESC, sales DESC LIMIT 10`,
+        GROUP BY oi.menu_id ORDER BY qty DESC, sales DESC LIMIT 10`,
       [shopId, start, end],
     );
 
