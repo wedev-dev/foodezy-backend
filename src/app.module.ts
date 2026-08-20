@@ -28,6 +28,7 @@ import { ShopTablesModule } from './modules/shop-tables/shop-tables.module';
 import { ShopDashboardModule } from './modules/shop-dashboard/shop-dashboard.module';
 import { ShopStaffModule } from './modules/shop-staff/shop-staff.module';
 import { ShopPosModule } from './modules/shop-pos/shop-pos.module';
+import { ShopReportsModule } from './modules/shop-reports/shop-reports.module';
 
 
 @Module({
@@ -57,6 +58,8 @@ import { ShopPosModule } from './modules/shop-pos/shop-pos.module';
     ShopStaffModule,
     // --- Phase 7: POS (take-order + order board) ---
     ShopPosModule,
+    // --- Phase 12b: shop reports ---
+    ShopReportsModule,
     AdminAuthModule,
     AdminDashboardModule,
     AdminAccountModule,
