@@ -103,6 +103,14 @@ export interface PayResult {
   method: PaymentMethod;
 }
 
+export interface PosConfig {
+  shopName: string;
+  address: string | null;
+  phone: string | null;
+  kitchenOutput: 'screen' | 'printer' | 'both';
+  paperSize: string;
+}
+
 @Injectable()
 export class ShopPosService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
@@ -564,6 +572,24 @@ export class ShopPosService {
     );
     const seq = Number(rows[0]?.mx ?? 0) + 1;
     return `BILL-${String(seq).padStart(4, '0')}`;
+  }
+
+  // ค่าตั้งค่าร้านสำหรับ POS/ครัว (kitchen_output, paper_size, ข้อมูลหัวใบครัว)
+  async config(shopId: number): Promise<PosConfig> {
+    const [s] = await this.dataSource.query<
+      Array<{ shopName: string; address: string | null; phone: string | null; kitchenOutput: string; paperSize: string | null }>
+    >(
+      `SELECT name AS shopName, address, phone, kitchen_output AS kitchenOutput, paper_size AS paperSize
+         FROM shops WHERE id = ? LIMIT 1`,
+      [shopId],
+    );
+    return {
+      shopName: s?.shopName ?? '',
+      address: s?.address ?? null,
+      phone: s?.phone ?? null,
+      kitchenOutput: (s?.kitchenOutput as 'screen' | 'printer' | 'both') ?? 'screen',
+      paperSize: s?.paperSize ?? '80mm',
+    };
   }
 
   private async fetchOrders(

@@ -19,6 +19,7 @@ import {
   OrderDetail,
   PayResult,
   PosCategory,
+  PosConfig,
   PosMenu,
   PosTable,
   ShopPosService,
@@ -39,6 +40,12 @@ export class ShopPosController {
     @Req() req: RequestWithShop,
   ): Promise<{ success: true; data: { categories: PosCategory[]; menus: PosMenu[] } }> {
     return { success: true, data: await this.pos.catalog(req.shop!.shopId) };
+  }
+
+  @Get('config')
+  @RequireShopPermission('pos_access')
+  async config(@Req() req: RequestWithShop): Promise<{ success: true; data: PosConfig }> {
+    return { success: true, data: await this.pos.config(req.shop!.shopId) };
   }
 
   @Get('tables')
