@@ -20,6 +20,7 @@ import {
   PosMenu,
   PosTable,
   ShopPosService,
+  TableBill,
 } from './shop-pos.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateItemStatusDto, UpdateOrderStatusDto } from './dto/update-status.dto';
@@ -41,6 +42,24 @@ export class ShopPosController {
   @RequireShopPermission('pos_access')
   async tables(@Req() req: RequestWithShop): Promise<{ success: true; data: PosTable[] }> {
     return { success: true, data: await this.pos.tables(req.shop!.shopId) };
+  }
+
+  @Get('tables/:id/bill')
+  @RequireShopPermission('pos_access')
+  async tableBill(
+    @Req() req: RequestWithShop,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<{ success: true; data: TableBill }> {
+    return { success: true, data: await this.pos.tableBill(req.shop!.shopId, id) };
+  }
+
+  @Post('tables/:id/close')
+  @RequireShopPermission('pos_access')
+  async closeTable(
+    @Req() req: RequestWithShop,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<{ success: true; data: { closed: boolean } }> {
+    return { success: true, data: await this.pos.closeTable(req.shop!.shopId, id) };
   }
 
   @Post('orders')

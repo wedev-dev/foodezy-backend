@@ -79,6 +79,14 @@ export interface OrderDetail {
 
 const ACTIVE_ORDER_STATUSES = ['pending', 'confirmed', 'cooking', 'ready'] as const;
 
+export interface TableBill {
+  tableNumber: string;
+  sessionId: number | null;
+  openedAt: string | null;
+  total: number;
+  orders: OrderDetail[];
+}
+
 @Injectable()
 export class ShopPosService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
@@ -414,15 +422,73 @@ export class ShopPosService {
     return `ORD-${String(seq).padStart(4, '0')}`;
   }
 
+  // บิลปัจจุบันของโต๊ะ (ทุกออเดอร์ใน session ที่เปิดอยู่ ยกเว้นที่ยกเลิก — รวม delivered ด้วย)
+  async tableBill(shopId: number, tableId: number): Promise<TableBill> {
+    const t = await this.dataSource.query<Array<{ tableNumber: string }>>(
+      `SELECT table_number AS tableNumber FROM tables WHERE id = ? AND shop_id = ? LIMIT 1`,
+      [tableId, shopId],
+    );
+    if (!t[0]) throw new NotFoundException('ไม่พบโต๊ะนี้');
+
+    const sess = await this.dataSource.query<Array<{ id: number; openedAt: string }>>(
+      `SELECT id, opened_at AS openedAt FROM table_sessions
+        WHERE shop_id = ? AND table_id = ? AND status = 'active' AND closed_at IS NULL
+        ORDER BY id DESC LIMIT 1`,
+      [shopId, tableId],
+    );
+    if (!sess[0]) {
+      return { tableNumber: t[0].tableNumber, sessionId: null, openedAt: null, total: 0, orders: [] };
+    }
+
+    const orders = await this.fetchOrders(shopId, { sessionId: sess[0].id, excludeCancelled: true });
+    const total = orders.reduce((s, o) => s + o.total, 0);
+    return {
+      tableNumber: t[0].tableNumber,
+      sessionId: sess[0].id,
+      openedAt: sess[0].openedAt,
+      total,
+      orders,
+    };
+  }
+
+  // เคลียร์/ปิดโต๊ะโดยไม่ชำระ (ยกเลิกออเดอร์ที่ยังค้าง + ปิด session) — คืนสถานะโต๊ะเป็นว่าง
+  async closeTable(shopId: number, tableId: number): Promise<{ closed: boolean }> {
+    const sess = await this.dataSource.query<Array<{ id: number }>>(
+      `SELECT id FROM table_sessions
+        WHERE shop_id = ? AND table_id = ? AND status = 'active' AND closed_at IS NULL
+        ORDER BY id DESC LIMIT 1`,
+      [shopId, tableId],
+    );
+    if (!sess[0]) return { closed: false };
+    const sessionId = sess[0].id;
+    await this.dataSource.query(
+      `UPDATE orders SET status = 'cancelled'
+        WHERE session_id = ? AND status IN ('pending', 'confirmed', 'cooking', 'ready')`,
+      [sessionId],
+    );
+    await this.dataSource.query(
+      `UPDATE table_sessions SET status = 'closed', closed_at = NOW() WHERE id = ?`,
+      [sessionId],
+    );
+    return { closed: true };
+  }
+
   private async fetchOrders(
     shopId: number,
-    filter: { statuses?: string[]; orderId?: number },
+    filter: { statuses?: string[]; orderId?: number; sessionId?: number; excludeCancelled?: boolean },
   ): Promise<OrderDetail[]> {
     const where: string[] = ['o.shop_id = ?'];
     const params: Array<string | number> = [shopId];
     if (filter.orderId) {
       where.push('o.id = ?');
       params.push(filter.orderId);
+    }
+    if (filter.sessionId) {
+      where.push('o.session_id = ?');
+      params.push(filter.sessionId);
+    }
+    if (filter.excludeCancelled) {
+      where.push("o.status <> 'cancelled'");
     }
     if (filter.statuses && filter.statuses.length) {
       where.push(`o.status IN (${filter.statuses.map(() => '?').join(',')})`);
