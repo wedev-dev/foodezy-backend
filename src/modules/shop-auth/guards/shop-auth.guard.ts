@@ -8,8 +8,8 @@ import { ShopAuthService, ShopIdentity, ShopTokenPayload } from '../shop-auth.se
 export const SHOP_COOKIE_NAME = 'foodezy_shop';
 
 export const REQUIRE_SHOP_PERMISSION = 'require_shop_permission';
-export const RequireShopPermission = (slug: string): MethodDecorator =>
-  SetMetadata(REQUIRE_SHOP_PERMISSION, slug);
+export const RequireShopPermission = (...slugs: string[]): MethodDecorator =>
+  SetMetadata(REQUIRE_SHOP_PERMISSION, slugs);
 
 export interface RequestWithShop extends Request {
   shop?: ShopIdentity;
@@ -41,11 +41,16 @@ export class ShopAuthGuard implements CanActivate {
     if (!identity) throw denied;
     req.shop = identity;
 
-    const required = this.reflector.get<string | undefined>(
+    const required = this.reflector.get<string[] | string | undefined>(
       REQUIRE_SHOP_PERMISSION,
       context.getHandler(),
     );
-    if (required && !identity.isSuperadmin && !identity.permissions.includes(required)) {
+    const requiredSlugs = Array.isArray(required) ? required : required ? [required] : [];
+    if (
+      requiredSlugs.length > 0 &&
+      !identity.isSuperadmin &&
+      !requiredSlugs.some((slug) => identity.permissions.includes(slug))
+    ) {
       throw new UnauthorizedException('คุณไม่มีสิทธิ์ใช้งานส่วนนี้');
     }
 
