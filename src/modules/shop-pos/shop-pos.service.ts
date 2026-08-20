@@ -77,8 +77,6 @@ export interface OrderDetail {
   items: OrderItem[];
 }
 
-const ACTIVE_ORDER_STATUSES = ['pending', 'confirmed', 'cooking', 'ready'] as const;
-
 export interface TableBill {
   tableNumber: string;
   sessionId: number | null;
@@ -353,10 +351,9 @@ export class ShopPosService {
 
   // ===================== ORDER BOARD =====================
   async activeOrders(shopId: number): Promise<OrderDetail[]> {
-    const orders = await this.fetchOrders(shopId, {
-      statuses: [...ACTIVE_ORDER_STATUSES],
-    });
-    return orders;
+    // จอครัว: ทุกออเดอร์ (ยกเว้นยกเลิก) ของโต๊ะที่ยังเปิดบิลอยู่ —
+    // ออเดอร์ที่เสิร์ฟแล้วยังค้างบนจอจนกว่าจะชำระเงิน/เคลียร์โต๊ะ (เพื่อไม่ให้ข้อมูลหาย)
+    return this.fetchOrders(shopId, { excludeCancelled: true, openSessionOnly: true });
   }
 
   async orderDetail(shopId: number, orderId: number): Promise<OrderDetail | null> {
@@ -475,7 +472,7 @@ export class ShopPosService {
 
   private async fetchOrders(
     shopId: number,
-    filter: { statuses?: string[]; orderId?: number; sessionId?: number; excludeCancelled?: boolean },
+    filter: { statuses?: string[]; orderId?: number; sessionId?: number; excludeCancelled?: boolean; openSessionOnly?: boolean },
   ): Promise<OrderDetail[]> {
     const where: string[] = ['o.shop_id = ?'];
     const params: Array<string | number> = [shopId];
@@ -489,6 +486,13 @@ export class ShopPosService {
     }
     if (filter.excludeCancelled) {
       where.push("o.status <> 'cancelled'");
+    }
+    if (filter.openSessionOnly) {
+      where.push(
+        `o.session_id IN (SELECT id FROM table_sessions
+                           WHERE shop_id = ? AND status = 'active' AND closed_at IS NULL)`,
+      );
+      params.push(shopId);
     }
     if (filter.statuses && filter.statuses.length) {
       where.push(`o.status IN (${filter.statuses.map(() => '?').join(',')})`);
