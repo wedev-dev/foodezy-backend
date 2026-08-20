@@ -29,6 +29,7 @@ import { ShopDashboardModule } from './modules/shop-dashboard/shop-dashboard.mod
 import { ShopStaffModule } from './modules/shop-staff/shop-staff.module';
 import { ShopPosModule } from './modules/shop-pos/shop-pos.module';
 import { ShopReportsModule } from './modules/shop-reports/shop-reports.module';
+import { CustomerOrderModule } from './modules/customer-order/customer-order.module';
 
 
 @Module({
@@ -60,6 +61,8 @@ import { ShopReportsModule } from './modules/shop-reports/shop-reports.module';
     ShopPosModule,
     // --- Phase 12b: shop reports ---
     ShopReportsModule,
+    // --- Phase 9: customer QR self-ordering (public) ---
+    CustomerOrderModule,
     AdminAuthModule,
     AdminDashboardModule,
     AdminAccountModule,

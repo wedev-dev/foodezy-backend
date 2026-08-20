@@ -23,6 +23,7 @@ import {
   PosMenu,
   PosTable,
   ShopPosService,
+  StaffCall,
   TableBill,
 } from './shop-pos.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -46,6 +47,21 @@ export class ShopPosController {
   @RequireShopPermission('pos_access')
   async config(@Req() req: RequestWithShop): Promise<{ success: true; data: PosConfig }> {
     return { success: true, data: await this.pos.config(req.shop!.shopId) };
+  }
+
+  @Get('calls')
+  @RequireShopPermission('pos_access')
+  async calls(@Req() req: RequestWithShop): Promise<{ success: true; data: StaffCall[] }> {
+    return { success: true, data: await this.pos.listCalls(req.shop!.shopId) };
+  }
+
+  @Post('calls/:id/resolve')
+  @RequireShopPermission('pos_access')
+  async resolveCall(
+    @Req() req: RequestWithShop,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<{ success: true; data: { resolved: boolean } }> {
+    return { success: true, data: await this.pos.resolveCall(req.shop!.shopId, id) };
   }
 
   @Get('tables')

@@ -111,6 +111,24 @@ export interface PosConfig {
   paperSize: string;
 }
 
+export interface StaffCall {
+  id: number;
+  tableId: number;
+  tableNumber: string;
+  callType: string;
+  message: string | null;
+  createdAt: string;
+}
+
+export interface CustomerTable {
+  shopId: number;
+  tableId: number;
+  tableNumber: string;
+  shopName: string;
+  isOpen: boolean;
+  orderMode: 'qr_only' | 'staff_only' | 'both';
+}
+
 @Injectable()
 export class ShopPosService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
@@ -291,7 +309,8 @@ export class ShopPosService {
   }
 
   // ===================== CREATE ORDER (staff) =====================
-  async createOrder(shopId: number, dto: CreateOrderDto): Promise<OrderDetail> {
+  async createOrder(shopId: number, dto: CreateOrderDto, source: 'staff' | 'qr' = 'staff'): Promise<OrderDetail> {
+    const orderStatus = source === 'qr' ? 'pending' : 'confirmed';
     const orderId = await this.dataSource.transaction(async (manager): Promise<number> => {
       const tableRows = await manager.query<Array<{ id: number }>>(
         `SELECT id FROM tables WHERE id = ? AND shop_id = ? AND is_active = 1 LIMIT 1`,
@@ -306,8 +325,8 @@ export class ShopPosService {
 
       const insertOrder = await manager.query(
         `INSERT INTO orders (shop_id, table_id, session_id, order_number, status, note, source)
-         VALUES (?, ?, ?, ?, 'confirmed', ?, 'staff')`,
-        [shopId, dto.tableId, sessionId, orderNumber, dto.note?.trim() || null],
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [shopId, dto.tableId, sessionId, orderNumber, orderStatus, dto.note?.trim() || null, source],
       );
       const newOrderId = Number((insertOrder as { insertId: number }).insertId);
 
@@ -562,6 +581,74 @@ export class ShopPosService {
       );
       return { billNumber, total, method };
     });
+  }
+
+  // ===================== CUSTOMER (QR) =====================
+  // แปลง qr_token -> โต๊ะ/ร้าน (สำหรับหน้าลูกค้า ไม่ต้องล็อกอิน)
+  async resolveToken(token: string): Promise<CustomerTable> {
+    const [row] = await this.dataSource.query<
+      Array<{ shopId: number; tableId: number; tableNumber: string; shopName: string; isOpen: number; orderMode: string }>
+    >(
+      `SELECT t.shop_id AS shopId, t.id AS tableId, t.table_number AS tableNumber,
+              s.name AS shopName, s.is_open AS isOpen, s.order_mode AS orderMode
+         FROM tables t JOIN shops s ON s.id = t.shop_id
+        WHERE t.qr_token = ? AND t.is_active = 1 AND s.deleted_at IS NULL LIMIT 1`,
+      [token],
+    );
+    if (!row) throw new NotFoundException('ไม่พบโต๊ะนี้ หรือ QR ไม่ถูกต้อง');
+    return {
+      shopId: row.shopId,
+      tableId: row.tableId,
+      tableNumber: row.tableNumber,
+      shopName: row.shopName,
+      isOpen: Number(row.isOpen) === 1,
+      orderMode: row.orderMode as 'qr_only' | 'staff_only' | 'both',
+    };
+  }
+
+  // เรียกพนักงาน (ลูกค้ากดจากหน้า QR)
+  async callStaff(shopId: number, tableId: number, callType: string, message: string | null): Promise<{ ok: true }> {
+    const type = ['utensils', 'ask', 'bill', 'other'].includes(callType) ? callType : 'ask';
+    await this.dataSource.transaction(async (manager) => {
+      const sessionId = await this.resolveActiveSession(manager, shopId, tableId);
+      await manager.query(
+        `INSERT INTO call_staff_logs (shop_id, table_id, session_id, call_type, message, is_resolved)
+         VALUES (?, ?, ?, ?, ?, 0)`,
+        [shopId, tableId, sessionId, type, message?.trim() || null],
+      );
+    });
+    return { ok: true };
+  }
+
+  // รายการเรียกพนักงานที่ยังไม่จัดการ (ฝั่ง POS)
+  async listCalls(shopId: number): Promise<StaffCall[]> {
+    const rows = await this.dataSource.query<
+      Array<{ id: number; tableId: number; tableNumber: string; callType: string; message: string | null; createdAt: string }>
+    >(
+      `SELECT c.id, c.table_id AS tableId, t.table_number AS tableNumber,
+              c.call_type AS callType, c.message, c.created_at AS createdAt
+         FROM call_staff_logs c
+         LEFT JOIN tables t ON t.id = c.table_id
+        WHERE c.shop_id = ? AND c.is_resolved = 0
+        ORDER BY c.created_at ASC`,
+      [shopId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      tableId: r.tableId,
+      tableNumber: r.tableNumber,
+      callType: r.callType,
+      message: r.message,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  async resolveCall(shopId: number, callId: number): Promise<{ resolved: boolean }> {
+    const res = await this.dataSource.query(
+      `UPDATE call_staff_logs SET is_resolved = 1, resolved_at = NOW() WHERE id = ? AND shop_id = ?`,
+      [callId, shopId],
+    );
+    return { resolved: Number((res as { affectedRows?: number }).affectedRows ?? 0) > 0 };
   }
 
   private async nextBillNumber(manager: EntityManager, shopId: number): Promise<string> {

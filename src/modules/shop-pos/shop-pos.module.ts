@@ -7,5 +7,6 @@ import { ShopPosService } from './shop-pos.service';
   imports: [ShopAuthModule],
   controllers: [ShopPosController],
   providers: [ShopPosService],
+  exports: [ShopPosService],
 })
 export class ShopPosModule {}
