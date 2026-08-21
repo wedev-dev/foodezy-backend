@@ -44,19 +44,19 @@ export class ShopPosController {
   }
 
   @Get('config')
-  @RequireShopPermission('pos_access')
+  @RequireShopPermission('pos_access', 'kitchen_only')
   async config(@Req() req: RequestWithShop): Promise<{ success: true; data: PosConfig }> {
     return { success: true, data: await this.pos.config(req.shop!.shopId) };
   }
 
   @Get('calls')
-  @RequireShopPermission('pos_access')
+  @RequireShopPermission('pos_access', 'kitchen_only')
   async calls(@Req() req: RequestWithShop): Promise<{ success: true; data: StaffCall[] }> {
     return { success: true, data: await this.pos.listCalls(req.shop!.shopId) };
   }
 
   @Post('calls/:id/resolve')
-  @RequireShopPermission('pos_access')
+  @RequireShopPermission('pos_access', 'kitchen_only')
   async resolveCall(
     @Req() req: RequestWithShop,
     @Param('id', ParseIntPipe) id: number,
@@ -117,13 +117,13 @@ export class ShopPosController {
   }
 
   @Get('orders')
-  @RequireShopPermission('pos_access')
+  @RequireShopPermission('pos_access', 'kitchen_only')
   async orders(@Req() req: RequestWithShop): Promise<{ success: true; data: OrderDetail[] }> {
     return { success: true, data: await this.pos.activeOrders(req.shop!.shopId) };
   }
 
   @Get('orders/:id')
-  @RequireShopPermission('pos_access')
+  @RequireShopPermission('pos_access', 'kitchen_only')
   async orderDetail(
     @Req() req: RequestWithShop,
     @Param('id', ParseIntPipe) id: number,
@@ -132,7 +132,7 @@ export class ShopPosController {
   }
 
   @Patch('orders/:id/status')
-  @RequireShopPermission('pos_access')
+  @RequireShopPermission('pos_access', 'kitchen_only')
   async updateOrderStatus(
     @Req() req: RequestWithShop,
     @Param('id', ParseIntPipe) id: number,
@@ -143,7 +143,7 @@ export class ShopPosController {
   }
 
   @Patch('order-items/:id/status')
-  @RequireShopPermission('pos_access')
+  @RequireShopPermission('pos_access', 'kitchen_only')
   async updateItemStatus(
     @Req() req: RequestWithShop,
     @Param('id', ParseIntPipe) id: number,

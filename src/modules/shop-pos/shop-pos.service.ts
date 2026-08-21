@@ -156,8 +156,8 @@ export class ShopPosService {
       `SELECT m.id, m.category_id AS categoryId, m.name, m.price, m.image_url AS imageUrl,
               m.is_recommended AS isRecommended, m.menu_pricing_type AS menuPricingType
          FROM shop_menus m
-         JOIN shop_foodcategories c ON c.id = m.category_id
-        WHERE m.shop_id = ? AND m.is_available = 1 AND c.is_active = 1
+         LEFT JOIN shop_foodcategories c ON c.id = m.category_id
+        WHERE m.shop_id = ? AND m.is_available = 1 AND (c.is_active = 1 OR c.id IS NULL)
         ORDER BY c.sort_order ASC, m.sort_order ASC, m.id ASC`,
       [shopId],
     );
