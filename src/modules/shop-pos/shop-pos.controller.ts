@@ -44,7 +44,7 @@ export class ShopPosController {
   }
 
   @Get('config')
-  @RequireShopPermission('pos_access', 'kitchen_only')
+  @RequireShopPermission('pos_access')
   async config(@Req() req: RequestWithShop): Promise<{ success: true; data: PosConfig }> {
     return { success: true, data: await this.pos.config(req.shop!.shopId) };
   }
@@ -117,13 +117,13 @@ export class ShopPosController {
   }
 
   @Get('orders')
-  @RequireShopPermission('pos_access', 'kitchen_only')
+  @RequireShopPermission('pos_access')
   async orders(@Req() req: RequestWithShop): Promise<{ success: true; data: OrderDetail[] }> {
     return { success: true, data: await this.pos.activeOrders(req.shop!.shopId) };
   }
 
   @Get('orders/:id')
-  @RequireShopPermission('pos_access', 'kitchen_only')
+  @RequireShopPermission('pos_access')
   async orderDetail(
     @Req() req: RequestWithShop,
     @Param('id', ParseIntPipe) id: number,
@@ -132,7 +132,7 @@ export class ShopPosController {
   }
 
   @Patch('orders/:id/status')
-  @RequireShopPermission('pos_access', 'kitchen_only')
+  @RequireShopPermission('pos_access')
   async updateOrderStatus(
     @Req() req: RequestWithShop,
     @Param('id', ParseIntPipe) id: number,
@@ -143,7 +143,7 @@ export class ShopPosController {
   }
 
   @Patch('order-items/:id/status')
-  @RequireShopPermission('pos_access', 'kitchen_only')
+  @RequireShopPermission('pos_access')
   async updateItemStatus(
     @Req() req: RequestWithShop,
     @Param('id', ParseIntPipe) id: number,
