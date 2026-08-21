@@ -9,6 +9,7 @@ export interface DashboardSummary {
   tablesTotal: number;
   pendingOrders: number;
   totalMenus: number;
+  onlineStaff: string[];
 }
 
 export interface BestSeller {
@@ -74,6 +75,20 @@ export class ShopDashboardService {
       [shopId],
     );
 
+    let onlineStaff: string[] = [];
+    try {
+      const staffRows = await this.dataSource.query<Array<{ name: string }>>(
+        `SELECT name FROM shop_staff
+          WHERE shop_id = ? AND is_active = 1 AND last_seen_at >= NOW() - INTERVAL 5 MINUTE
+          ORDER BY last_seen_at DESC`,
+        [shopId],
+      );
+      onlineStaff = staffRows.map((r) => r.name);
+    } catch {
+      // คอลัมน์ last_seen_at ยังไม่มี -> คืนค่าว่าง
+      onlineStaff = [];
+    }
+
     return {
       salesToday: Number(sales?.v ?? 0),
       ordersToday: Number(orders?.v ?? 0),
@@ -81,6 +96,7 @@ export class ShopDashboardService {
       tablesTotal: Number(tablesTotal?.v ?? 0),
       pendingOrders: Number(pending?.v ?? 0),
       totalMenus: Number(menus?.v ?? 0),
+      onlineStaff,
     };
   }
 

@@ -36,6 +36,14 @@ export class ShopAuthController {
     return { success: true, data: req.shop! };
   }
 
+  @Post('heartbeat')
+  @HttpCode(200)
+  @UseGuards(ShopAuthGuard)
+  async heartbeat(@Req() req: RequestWithShop): Promise<{ success: true }> {
+    await this.shopAuth.touchLastSeen(req.shop!.shopId, req.shop!.staffId);
+    return { success: true };
+  }
+
   private cookieOptions(maxAgeMs: number | null): CookieOptions {
     const domain = this.config.get<string>('COOKIE_DOMAIN');
     const secure = this.config.get<string>('COOKIE_SECURE', 'true') === 'true';

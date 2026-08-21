@@ -184,6 +184,19 @@ export class ShopAuthService {
     };
   }
 
+  // อัปเดตเวลาออนไลน์ล่าสุดของพนักงาน (ปลอดภัยแม้ยังไม่ได้ ALTER คอลัมน์)
+  async touchLastSeen(shopId: number, staffId: number | null): Promise<void> {
+    if (!staffId || staffId <= 0) return;
+    try {
+      await this.dataSource.query(
+        `UPDATE shop_staff SET last_seen_at = NOW() WHERE id = ? AND shop_id = ?`,
+        [staffId, shopId],
+      );
+    } catch {
+      // คอลัมน์ last_seen_at ยังไม่มี -> ข้ามไปเงียบ ๆ
+    }
+  }
+
   private async allPermissionSlugs(): Promise<string[]> {
     const rows = await this.dataSource.query<Array<{ slug: string }>>(
       'SELECT slug FROM system_permissions ORDER BY id ASC',
