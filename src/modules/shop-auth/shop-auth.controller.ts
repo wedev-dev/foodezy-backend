@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { CookieOptions, Response } from 'express';
-import { ShopAuthService, ShopIdentity } from './shop-auth.service';
+import { ShopAuthService, ShopIdentity, ShopSubscription } from './shop-auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SHOP_COOKIE_NAME, ShopAuthGuard, RequestWithShop } from './guards/shop-auth.guard';
 
@@ -34,6 +34,12 @@ export class ShopAuthController {
   @UseGuards(ShopAuthGuard)
   me(@Req() req: RequestWithShop): { success: true; data: ShopIdentity } {
     return { success: true, data: req.shop! };
+  }
+
+  @Get('subscription')
+  @UseGuards(ShopAuthGuard)
+  async subscription(@Req() req: RequestWithShop): Promise<{ success: true; data: ShopSubscription }> {
+    return { success: true, data: await this.shopAuth.subscription(req.shop!.shopId) };
   }
 
   @Post('heartbeat')

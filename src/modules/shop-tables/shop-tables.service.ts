@@ -23,6 +23,22 @@ export class ShopTablesService {
   }
 
   async create(shopId: number, dto: TableDto): Promise<{ id: number; tableNumber: string; qrToken: string }> {
+    // เช็คลิมิตจำนวนโต๊ะตามแพ็กเกจก่อนเพิ่ม
+    const limitRows = await this.dataSource.query<Array<{ maxTables: number | null; used: number }>>(
+      `SELECT p.max_tables AS maxTables,
+              (SELECT COUNT(*) FROM tables t WHERE t.shop_id = s.id) AS used
+         FROM shops s
+         LEFT JOIN packages p ON p.id = s.package_id
+        WHERE s.id = ?`,
+      [shopId],
+    );
+    const maxTables = limitRows[0]?.maxTables != null ? Number(limitRows[0].maxTables) : null;
+    const used = Number(limitRows[0]?.used ?? 0);
+    if (maxTables != null && maxTables > 0 && used >= maxTables) {
+      throw new BadRequestException(
+        `แพ็กเกจของคุณเพิ่มโต๊ะได้สูงสุด ${maxTables} โต๊ะ (ตอนนี้มี ${used} โต๊ะแล้ว) — กรุณาอัปเกรดแพ็กเกจเพื่อเพิ่มโต๊ะ`,
+      );
+    }
     const number = dto.tableNumber?.trim() || (await this.nextNumber(shopId));
     await this.assertUniqueNumber(shopId, number);
     const token = await this.newToken();

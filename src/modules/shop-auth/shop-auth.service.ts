@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -21,6 +21,20 @@ export interface ShopIdentity {
   name: string;
   isSuperadmin: boolean;
   permissions: string[];
+}
+
+export interface ShopSubscription {
+  status: string;
+  packageName: string;
+  isTrial: boolean;
+  priceMonthly: number | null;
+  maxTables: number | null;
+  usedTables: number;
+  startAt: string | null;
+  endAt: string | null;
+  daysRemaining: number | null;
+  expired: boolean;
+  expiringSoon: boolean;
 }
 
 export interface LoginResult {
@@ -195,6 +209,67 @@ export class ShopAuthService {
     } catch {
       // คอลัมน์ last_seen_at ยังไม่มี -> ข้ามไปเงียบ ๆ
     }
+  }
+
+  // ข้อมูลแพ็กเกจ/การใช้งานของร้าน สำหรับแสดงในหน้าจัดการ + แจ้งเตือนต่ออายุ
+  async subscription(shopId: number): Promise<ShopSubscription> {
+    const rows = await this.dataSource.query<Array<{
+      status: string;
+      packageId: number | null;
+      packageName: string | null;
+      maxTables: number | null;
+      priceMonthly: string | null;
+      trialDays: number | null;
+      trialStartAt: string | null;
+      trialEndAt: string | null;
+      packageStartAt: string | null;
+      packageEndAt: string | null;
+      usedTables: number;
+    }>>(
+      `SELECT s.status,
+              s.package_id            AS packageId,
+              p.name                  AS packageName,
+              p.max_tables            AS maxTables,
+              p.price_monthly         AS priceMonthly,
+              p.trial_days            AS trialDays,
+              s.trial_start_at        AS trialStartAt,
+              s.trial_end_at          AS trialEndAt,
+              s.package_start_at      AS packageStartAt,
+              s.package_end_at        AS packageEndAt,
+              (SELECT COUNT(*) FROM tables t WHERE t.shop_id = s.id) AS usedTables
+         FROM shops s
+         LEFT JOIN packages p ON p.id = s.package_id
+        WHERE s.id = ?`,
+      [shopId],
+    );
+    const r = rows[0];
+    if (!r) throw new NotFoundException('ไม่พบข้อมูลร้าน');
+
+    // ร้านที่ยังเป็น Trial (package_id = 1) ให้ใช้ trial_end_at เป็นวันหมดอายุ ไม่งั้นใช้ package_end_at
+    const isTrial = Number(r.packageId) === 1 || (!r.packageStartAt && !!r.trialEndAt);
+    const endAt = isTrial ? r.trialEndAt : r.packageEndAt;
+    const startAt = isTrial ? r.trialStartAt : r.packageStartAt;
+
+    let daysRemaining: number | null = null;
+    if (endAt) {
+      const end = new Date(endAt.replace(' ', 'T'));
+      const diff = end.getTime() - Date.now();
+      daysRemaining = Math.ceil(diff / 86_400_000);
+    }
+
+    return {
+      status: r.status,
+      packageName: r.packageName ?? 'ยังไม่มีแพ็กเกจ',
+      isTrial,
+      priceMonthly: r.priceMonthly != null ? Number(r.priceMonthly) : null,
+      maxTables: r.maxTables != null ? Number(r.maxTables) : null,
+      usedTables: Number(r.usedTables ?? 0),
+      startAt,
+      endAt,
+      daysRemaining,
+      expired: daysRemaining != null && daysRemaining < 0,
+      expiringSoon: daysRemaining != null && daysRemaining >= 0 && daysRemaining <= 3,
+    };
   }
 
   private async allPermissionSlugs(): Promise<string[]> {
