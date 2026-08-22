@@ -25,6 +25,7 @@ import { ShopAuthModule } from './modules/shop-auth/shop-auth.module';
 import { ShopSettingsModule } from './modules/shop-settings/shop-settings.module';
 import { ShopMenusModule } from './modules/shop-menus/shop-menus.module';
 import { ShopTablesModule } from './modules/shop-tables/shop-tables.module';
+import { ShopBillingModule } from './modules/shop-billing/shop-billing.module';
 import { ShopDashboardModule } from './modules/shop-dashboard/shop-dashboard.module';
 import { ShopStaffModule } from './modules/shop-staff/shop-staff.module';
 import { ShopPosModule } from './modules/shop-pos/shop-pos.module';
@@ -55,6 +56,7 @@ import { CustomerOrderModule } from './modules/customer-order/customer-order.mod
     ShopSettingsModule,
     ShopMenusModule,
     ShopTablesModule,
+    ShopBillingModule,
     ShopDashboardModule,
     ShopStaffModule,
     // --- Phase 7: POS (take-order + order board) ---
