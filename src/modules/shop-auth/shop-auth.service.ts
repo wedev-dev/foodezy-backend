@@ -245,16 +245,26 @@ export class ShopAuthService {
     const r = rows[0];
     if (!r) throw new NotFoundException('ไม่พบข้อมูลร้าน');
 
+    // mysql driver อาจคืน DATETIME เป็น Date object หรือ string -> รองรับทั้งสองแบบ
+    const toDate = (v: string | Date | null): Date | null => {
+      if (!v) return null;
+      if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
+      const d = new Date(String(v).replace(' ', 'T'));
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const toStr = (v: string | Date | null): string | null => {
+      const d = toDate(v);
+      return d ? d.toISOString() : null;
+    };
+
     // ร้านที่ยังเป็น Trial (package_id = 1) ให้ใช้ trial_end_at เป็นวันหมดอายุ ไม่งั้นใช้ package_end_at
     const isTrial = Number(r.packageId) === 1 || (!r.packageStartAt && !!r.trialEndAt);
-    const endAt = isTrial ? r.trialEndAt : r.packageEndAt;
-    const startAt = isTrial ? r.trialStartAt : r.packageStartAt;
+    const endDate = toDate(isTrial ? r.trialEndAt : r.packageEndAt);
+    const startAt = toStr(isTrial ? r.trialStartAt : r.packageStartAt);
 
     let daysRemaining: number | null = null;
-    if (endAt) {
-      const end = new Date(endAt.replace(' ', 'T'));
-      const diff = end.getTime() - Date.now();
-      daysRemaining = Math.ceil(diff / 86_400_000);
+    if (endDate) {
+      daysRemaining = Math.ceil((endDate.getTime() - Date.now()) / 86_400_000);
     }
 
     return {
@@ -265,7 +275,7 @@ export class ShopAuthService {
       maxTables: r.maxTables != null ? Number(r.maxTables) : null,
       usedTables: Number(r.usedTables ?? 0),
       startAt,
-      endAt,
+      endAt: endDate ? endDate.toISOString() : null,
       daysRemaining,
       expired: daysRemaining != null && daysRemaining < 0,
       expiringSoon: daysRemaining != null && daysRemaining >= 0 && daysRemaining <= 3,
